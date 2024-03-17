@@ -13,15 +13,15 @@ def emojis(str=""):
 
 class TryExcept(contextlib.ContextDecorator):
     # YOLOv5 TryExcept class. Usage: @TryExcept() decorator or 'with TryExcept():' context manager
-    def __init__(self, msg=""):
+    def __init__(self, msg=""):  # msg可用于设置异常消息的前缀
         """Initializes TryExcept with an optional message, used as a decorator or context manager for error handling."""
-        self.msg = msg
+        self.msg = msg  #
 
-    def __enter__(self):
+    def __enter__(self):  # 设置进入上下文管理器的准备工作
         """Enter the runtime context related to this object for error handling with an optional message."""
         pass
 
-    def __exit__(self, exc_type, value, traceback):
+    def __exit__(self, exc_type, value, traceback):  # 如果value值不为空则表示发生了异常，value表示发生异常的代码或提示
         """Context manager exit method that prints an error message with emojis if an exception occurred, always returns
         True.
         """

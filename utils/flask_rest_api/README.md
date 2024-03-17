@@ -34,7 +34,7 @@ The model inference results are returned as a JSON response:
     "height": 0.9318675399,
     "name": "person",
     "width": 0.3264600933,
-    "xcenter": 0.7438579798,
+    "xcenter": 0.7438579798, 
     "ycenter": 0.5207948685
   },
   {

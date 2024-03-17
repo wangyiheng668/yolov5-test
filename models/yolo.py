@@ -54,13 +54,13 @@ from utils.autoanchor import check_anchor_order
 from utils.general import LOGGER, check_version, check_yaml, colorstr, make_divisible, print_args
 from utils.plots import feature_visualization
 from utils.torch_utils import (
-    fuse_conv_and_bn,
-    initialize_weights,
-    model_info,
-    profile,
-    scale_img,
+    fuse_conv_and_bn,  # 将卷积层和批量归一化层进行融合
+    initialize_weights,  # 初始化模型的权重，通常在创建模型的实例后调用该函数
+    model_info,  # 获取模型的信息
+    profile,  # 对模型的性能分析，例如就算模型的前向传播时间
+    scale_img,  # 调整输入图像的尺寸
     select_device,
-    time_sync,
+    time_sync,  # 用于计算模型flops（浮点运算数）的工具，可用于评估模型的计算复杂度
 )
 
 try:
@@ -75,17 +75,18 @@ class Detect(nn.Module):
     dynamic = False  # force grid reconstruction
     export = False  # export mode
 
-    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):
+    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # inplace是切片赋值的操作，即可以在原始存储空间直接修改变量而不是返回新的对象
         """Initializes YOLOv5 detection layer with specified classes, anchors, channels, and inplace operations."""
         super().__init__()
         self.nc = nc  # number of classes
-        self.no = nc + 5  # number of outputs per anchor
-        self.nl = len(anchors)  # number of detection layers
-        self.na = len(anchors[0]) // 2  # number of anchors
-        self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
-        self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
-        self.register_buffer("anchors", torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
-        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        self.no = nc + 5  # number of outputs per anchor  每个锚点的输出量（即类别+xywh和置信度）
+        self.nl = len(anchors)  # number of detection layers  层的数量=锚点的元组长度
+        self.na = len(anchors[0]) // 2  # number of anchors  每个检测层使用的锚点数目，anchors[0]代表第一个检测层，除以2是应为每个锚点有两个长度单位，即宽和高
+        self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid  存储每个层的网格监测信息
+        # 存储每个检测层的锚点网格信息的列表，即每个检测层的每个网格都有一个锚点信息
+        self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid ...
+        self.register_buffer("anchors", torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2) 将锚点转换为张量
+        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv  输出的卷积模块列表中每一个都是conv2d实例
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
     def forward(self, x):
@@ -100,7 +101,7 @@ class Detect(nn.Module):
                 if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
-                if isinstance(self, Segment):  # (boxes + masks)
+                if isinstance(self, Segment):  # (boxes + masks)  检查当前的模型是不是segment类或者子类的实例
                     xy, wh, conf, mask = x[i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
                     xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
                     wh = (wh.sigmoid() * 2) ** 2 * self.anchor_grid[i]  # wh
@@ -184,7 +185,7 @@ class BaseModel(nn.Module):
         if c:
             LOGGER.info(f"{sum(dt):10.2f} {'-':>10s} {'-':>10s}  Total")
 
-    def fuse(self):
+    def fuse(self):  # 融合模型中的 Conv2d() 和 BatchNorm2d() 层，以提高推理速度。
         """Fuses Conv2d() and BatchNorm2d() layers in the model to improve inference speed."""
         LOGGER.info("Fusing layers... ")
         for m in self.model.modules():
@@ -195,11 +196,11 @@ class BaseModel(nn.Module):
         self.info()
         return self
 
-    def info(self, verbose=False, img_size=640):
+    def info(self, verbose=False, img_size=640):  # 打印模型的信息，包括各层的参数数量
         """Prints model information given verbosity and image size, e.g., `info(verbose=True, img_size=640)`."""
         model_info(self, verbose, img_size)
 
-    def _apply(self, fn):
+    def _apply(self, fn):  # 对模型的张量执行转换，只有当模型的最后一个组件是 Detect 或 Segment 类型时才会进行处理。
         """Applies transformations like to(), cpu(), cuda(), half() to model tensors excluding parameters or registered
         buffers.
         """
@@ -365,9 +366,11 @@ class ClassificationModel(BaseModel):
         self.model = None
 
 
-def parse_model(d, ch):
+# --------------------------------------------------------构建整个模型的连接------------------------------------------------------
+def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具体查看detectmodel类
     """Parses a YOLOv5 model from a dict `d`, configuring layers based on input channels `ch` and model architecture."""
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
+    # gd深度倍数、gw宽度倍数、 activation激活函数类型、ch_mul通道倍数
     anchors, nc, gd, gw, act, ch_mul = (
         d["anchors"],
         d["nc"],
@@ -382,9 +385,12 @@ def parse_model(d, ch):
     if not ch_mul:
         ch_mul = 8
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
+    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)  模型的所有输出量（锚点数量乘以（类别数量加上5））
 
+    # layers 用于存储模型的各个层次，save 用于存储需要保存特征图的层次索引
+    # 将当前层次的输出通道数初始化为输入通道列表ch的最后一个值，这样通过不断更新ch，确保了每个模块在构建过程中都以前一个模块的输出通道数作为输入通道数，从而保持通道数的连续性。
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+    # 这里是将字典中的backbone列表和head列表进行合并，然后进行迭代遍历。其中i是枚举的索引，而 (f, n, m, args) 是枚举的值，分别表示接收那一层的数据、数量、模块和参数。
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):

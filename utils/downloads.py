@@ -67,16 +67,17 @@ def safe_download(file, url, url2=None, min_bytes=1e0, error_msg=""):
 
     file = Path(file)
     assert_msg = f"Downloaded file '{file}' does not exist or size is < min_bytes={min_bytes}"
-    try:  # url1
+    try:  # url1 要下载的文件
         LOGGER.info(f"Downloading {url} to {file}...")
+        # torch.hub.download_url_to_file下载文件到指定路径，同时记录下载进度。如果下载失败或文件大小不符合要求，将捕获异常
         torch.hub.download_url_to_file(url, str(file), progress=LOGGER.level <= logging.INFO)
         assert file.exists() and file.stat().st_size > min_bytes, assert_msg  # check
-    except Exception as e:  # url2
+    except Exception as e:  # url2 备用要下载的文件
         if file.exists():
             file.unlink()  # remove partial downloads
         LOGGER.info(f"ERROR: {e}\nRe-attempting {url2 or url} to {file}...")
         # curl download, retry and resume on fail
-        curl_download(url2 or url, file)
+        curl_download(url2 or url, file)   # 若均失败，重新下载文件
     finally:
         if not file.exists() or file.stat().st_size < min_bytes:  # check
             if file.exists():
@@ -91,6 +92,7 @@ def attempt_download(file, repo="ultralytics/yolov5", release="v7.0"):
     """
     from utils.general import LOGGER
 
+    # 检查指定的文件是否在资产列表中，如果在，则下载文件。
     def github_assets(repository, version="latest"):
         # Return GitHub repo tag (i.e. 'v7.0') and assets (i.e. ['yolov5s.pt', 'yolov5m.pt', ...])
         if version != "latest":
@@ -126,10 +128,11 @@ def attempt_download(file, repo="ultralytics/yolov5", release="v7.0"):
 
         if name in assets:
             file.parent.mkdir(parents=True, exist_ok=True)  # make parent dir (if required)
+            # safe_download负责下载文件，它接受文件路径、URL、最小字节数和错误消息等参数
             safe_download(
                 file,
                 url=f"https://github.com/{repo}/releases/download/{tag}/{name}",
-                min_bytes=1e5,
+                min_bytes=1e5,  # 最小接收近100kb的文件
                 error_msg=f"{file} missing, try downloading from https://github.com/{repo}/releases/{tag}",
             )
 

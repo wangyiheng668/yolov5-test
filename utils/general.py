@@ -119,12 +119,12 @@ def is_docker() -> bool:
 def is_writeable(dir, test=False):
     """Checks if a directory is writable, optionally testing by creating a temporary file if `test=True`."""
     if not test:
-        return os.access(dir, os.W_OK)  # possible issues on Windows
+        return os.access(dir, os.W_OK)  # 会返回一个布尔值，表示指定路径是否可写。but possible issues on Windows，故此采用下列的异常处理机制来检验
     file = Path(dir) / "tmp.txt"
     try:
         with open(file, "w"):  # open file with write permissions
             pass
-        file.unlink()  # remove file
+        file.unlink()  # remove file 会删除 file 变量所代表的路径对应的文件。
         return True
     except OSError:
         return False
@@ -133,7 +133,7 @@ def is_writeable(dir, test=False):
 LOGGING_NAME = "yolov5"
 
 
-def set_logging(name=LOGGING_NAME, verbose=True):
+def set_logging(name=LOGGING_NAME, verbose=True):  # `name`设置记录器的名称，`verbose`控制日志记录级别。
     """Configures logging with specified verbosity; `name` sets the logger's name, `verbose` controls logging level."""
     rank = int(os.getenv("RANK", -1))  # rank in world for Multi-GPU trainings
     level = logging.INFO if verbose and rank in {-1, 0} else logging.ERROR
@@ -430,7 +430,7 @@ def check_version(current="0.0.0", minimum="0.0.0", name="version ", pinned=Fals
     return result
 
 
-def check_img_size(imgsz, s=32, floor=0):
+def check_img_size(imgsz, s=32, floor=0):  # 用于调整图像尺寸，使其可以被指定的步长 s 整除
     """Adjusts image size to be divisible by stride `s`, supports int or list/tuple input, returns adjusted size."""
     if isinstance(imgsz, int):  # integer i.e. img_size=640
         new_size = max(make_divisible(imgsz, int(s)), floor)
@@ -469,7 +469,7 @@ def check_suffix(file="yolov5s.pt", suffix=(".pt",), msg=""):
                 assert s in suffix, f"{msg}{f} acceptable suffix is {suffix}"
 
 
-def check_yaml(file, suffix=(".yaml", ".yml")):
+def check_yaml(file, suffix=(".yaml", ".yml")):  # 调用下面的check_file函数中的suffix功能
     """Searches/downloads a YAML file, verifies its suffix (.yaml or .yml), and returns the file path."""
     return check_file(file, suffix)
 
@@ -646,7 +646,7 @@ def url2file(url):
 
 def download(url, dir=".", unzip=True, delete=True, curl=False, threads=1, retry=3):
     """Downloads and optionally unzips files concurrently, supporting retries and curl fallback."""
-
+    # 用于验证和/或自动下载数据集的函数，返回数据集的配置信息，以字典形式呈现。
     def download_one(url, dir):
         # Download 1 file
         success = True
@@ -705,14 +705,14 @@ def clean_str(s):
     return re.sub(pattern="[|@#!¡·$€%&()=?¿^*;:,¨´><+]", repl="_", string=s)
 
 
-def one_cycle(y1=0.0, y2=1.0, steps=100):
+def one_cycle(y1=0.0, y2=1.0, steps=100):  # 余弦退火学习率调度函数，将其输入的训练步数映射在一个指定范围[y1,y2]内的学习率。step-s是总的学习步数
     """
     Generates a lambda for a sinusoidal ramp from y1 to y2 over 'steps'.
 
     See https://arxiv.org/pdf/1812.01187.pdf for details.
     """
-    return lambda x: ((1 - math.cos(x * math.pi / steps)) / 2) * (y2 - y1) + y1
-
+    return lambda x: ((1 - math.cos(x * math.pi / steps)) / 2) * (y2 - y1) + y1  # x为当前的步数
+    # 此处存在疑问，这个值不应当是随着步数x的增加使括号内的值越来越接近从而使值越来越大吗？这与后期学习率应当降低不符吧?
 
 def colorstr(*input):
     """
@@ -758,9 +758,9 @@ def labels_to_class_weights(labels, nc=80):
     # gpi = ((320 / 32 * np.array([1, 2, 4])) ** 2 * 3).sum()  # gridpoints per image
     # weights = np.hstack([gpi * len(labels)  - weights.sum() * 9, weights * 9]) ** 0.5  # prepend gridpoints to start
 
-    weights[weights == 0] = 1  # replace empty bins with 1
-    weights = 1 / weights  # number of targets per class
-    weights /= weights.sum()  # normalize
+    weights[weights == 0] = 1  # replace empty bins with 1 这里是以防在类别列表中存在数据中没有体现的类别，从而使计算某类别数1 / weights出现除以0的情况
+    weights = 1 / weights  # number of targets per class  得到某一类别的类别数，上式中保证了类别数至少为1
+    weights /= weights.sum()  # normalize 进行归一化操作
     return torch.from_numpy(weights).float()
 
 

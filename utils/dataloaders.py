@@ -194,7 +194,7 @@ def create_dataloader(
             rank=rank,
         )
 
-    batch_size = min(batch_size, len(dataset))
+    batch_size = min(batch_size, len(dataset))  # 确保每个batch_size的数据不会溢出，设定了一个最大的加载批次，确定每次加载的批次不会超过数据集中样本的数量
     nd = torch.cuda.device_count()  # number of CUDA devices
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
     sampler = None if rank == -1 else SmartDistributedSampler(dataset, shuffle=shuffle)

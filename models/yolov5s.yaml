@@ -3,8 +3,8 @@
 # Parameters
 nc: 80 # number of classes
 depth_multiple: 0.33 # model depth multiple
-width_multiple: 0.50 # layer channel multiple
-anchors:
+width_multiple: 0.50 # layer channel multiple   卷积通道的缩放因子，将backbone和head部分的有关Conv通道的设置全部乘以该系数
+anchors: # 锚框的大小
   - [10, 13, 16, 30, 33, 23] # P3/8
   - [30, 61, 62, 45, 59, 119] # P4/16
   - [116, 90, 156, 198, 373, 326] # P5/32
@@ -15,7 +15,7 @@ backbone:
   [
     [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
     [-1, 1, Conv, [128, 3, 2]], # 1-P2/4
-    [-1, 3, C3, [128]],
+    [-1, 3, C3, [128]],                       #第一个参数代表接收上层数据，第二个参数代表堆叠块数。将其乘以缩放因子depth_multiple得到最终的个数
     [-1, 1, Conv, [256, 3, 2]], # 3-P3/8
     [-1, 6, C3, [256]],
     [-1, 1, Conv, [512, 3, 2]], # 5-P4/16

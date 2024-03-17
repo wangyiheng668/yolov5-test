@@ -207,13 +207,15 @@ def profile(input, ops, n=10, device=None):
     return results
 
 
-def is_parallel(model):
+def is_parallel(model):  # 检查模型是否正在使用数据并行（DP）或者分布式数据（DDP)
     """Checks if the model is using Data Parallelism (DP) or Distributed Data Parallelism (DDP)."""
-    return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
+    return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)  # 如果模型使用并行化则返回true
 
 
-def de_parallel(model):
+def de_parallel(model):  # 用于返回单一的GPU模型，移除已经应用的DP/DDP分布式并行数据
     """Returns a single-GPU model by removing Data Parallelism (DP) or Distributed Data Parallelism (DDP) if applied."""
+    # 检查模型是否已经应用并行化（parallel），若使用则返回model》module，为包裹在并行化模块中的原始模型，代表了单个GPU上的模型
+    # 若没有使用并行化则直接返回传入的模型本身
     return model.module if is_parallel(model) else model
 
 
@@ -338,13 +340,14 @@ def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
     return F.pad(img, [0, w - s[1], 0, h - s[0]], value=0.447)  # value = imagenet mean
 
 
-def copy_attr(a, b, include=(), exclude=()):
+def copy_attr(a, b, include=(), exclude=()):  # a目标对象，b源对象 include可选参数 exclude不应该复制的参数列表
     """Copies attributes from object b to a, optionally filtering with include and exclude lists."""
     for k, v in b.__dict__.items():
+        # 跳过该属性，前提是当前属性不在列表中或者当前属性一下划线开头（表示私有）
         if (len(include) and k not in include) or k.startswith("_") or k in exclude:
             continue
         else:
-            setattr(a, k, v)
+            setattr(a, k, v)  # 将当前属性及其值复制到目标对象a中
 
 
 def smart_optimizer(model, name="Adam", lr=0.001, momentum=0.9, decay=1e-5):
@@ -357,9 +360,9 @@ def smart_optimizer(model, name="Adam", lr=0.001, momentum=0.9, decay=1e-5):
     bn = tuple(v for k, v in nn.__dict__.items() if "Norm" in k)  # normalization layers, i.e. BatchNorm2d()
     for v in model.modules():
         for p_name, p in v.named_parameters(recurse=0):
-            if p_name == "bias":  # bias (no decay)
+            if p_name == "bias":  # bias (no decay) 如果参数的名称是bias，则将其添加为g2的参数
                 g[2].append(p)
-            elif p_name == "weight" and isinstance(v, bn):  # weight (no decay)
+            elif p_name == "weight" and isinstance(v, bn):  # weight (no decay) 如果参数名为weight，且是归一化层则将其添加到g1
                 g[1].append(p)
             else:
                 g[0].append(p)  # weight (with decay)
@@ -375,7 +378,9 @@ def smart_optimizer(model, name="Adam", lr=0.001, momentum=0.9, decay=1e-5):
     else:
         raise NotImplementedError(f"Optimizer {name} not implemented.")
 
+    # 将第一个参数g0添加到优化器并设置衰减率为decay
     optimizer.add_param_group({"params": g[0], "weight_decay": decay})  # add g0 with weight_decay
+    # 由于归一化层不需要进行权重的衰减，故此将其衰减率设置为0
     optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})  # add g1 (BatchNorm2d weights)
     LOGGER.info(
         f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr}) with parameter groups "
@@ -445,7 +450,7 @@ class EarlyStopping:
         return stop
 
 
-class ModelEMA:
+class ModelEMA:  # 通过这个类将传入的原始模型进行参数平滑，
     """Updated Exponential Moving Average (EMA) from https://github.com/rwightman/pytorch-image-models
     Keeps a moving average of everything in the model state_dict (parameters and buffers)
     For EMA details see https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage

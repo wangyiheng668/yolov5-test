@@ -1,5 +1,5 @@
 # YOLOv5 🚀 by Ultralytics, AGPL-3.0 license
-"""Activation functions."""
+"""Activation functions.定义了各种激活函数"""
 
 import torch
 import torch.nn as nn

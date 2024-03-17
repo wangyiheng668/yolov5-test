@@ -33,6 +33,9 @@ except (ImportError, AssertionError):
     os.system("pip install -U ultralytics")
     import ultralytics
 
+# Annotator适用于标注图像的类，用于绘制边界框、标签、关键点
+# colors用于定义不同类别框的颜色
+# save_one_box是用于保存单个边界框的函数，可用于将检测到的目标物体保存为图片文件
 from ultralytics.utils.plotting import Annotator, colors, save_one_box
 
 from utils import TryExcept
@@ -40,28 +43,28 @@ from utils.dataloaders import exif_transpose, letterbox
 from utils.general import (
     LOGGER,
     ROOT,
-    Profile,
+    Profile,  # 处理配置文件或其他任务
     check_requirements,
-    check_suffix,
+    check_suffix,  # 检查后缀是否符合特定要求
     check_version,
     colorstr,
-    increment_path,
+    increment_path,  # 增加路径的版本号，以防文件名冲突
     is_jupyter,
     make_divisible,
-    non_max_suppression,
-    scale_boxes,
+    non_max_suppression,  # 实现非极大值抑制，用于筛出检测结果中的重叠框
+    scale_boxes,  # 用于缩放边界框坐标
     xywh2xyxy,
-    xyxy2xywh,
+    xyxy2xywh,  # 这里是从左上角坐标和右下角坐标转换为左上角坐标和长宽的形式
     yaml_load,
 )
-from utils.torch_utils import copy_attr, smart_inference_mode
+from utils.torch_utils import copy_attr, smart_inference_mode  # copy_attr是复制pytorch模型的属性，smart_inference_mode设置为智能推理模式
 
 
-def autopad(k, p=None, d=1):
+def autopad(k, p=None, d=1):   # 用于卷积层的填充，以保证输出形状保持不变
     """
     Pads kernel to 'same' output shape, adjusting for optional dilation; returns padding size.
 
-    `k`: kernel, `p`: padding, `d`: dilation.
+    `k`: kernel, `p`: padding, `d`: dilation（膨胀）.
     """
     if d > 1:
         k = d * (k - 1) + 1 if isinstance(k, int) else [d * (x - 1) + 1 for x in k]  # actual kernel-size
@@ -90,16 +93,17 @@ class Conv(nn.Module):
         return self.act(self.conv(x))
 
 
-class DWConv(Conv):
+class DWConv(Conv):  # 常用于移动设备和嵌入式系统中的一种深度可分离卷积操作，
     # Depth-wise convolution
-    def __init__(self, c1, c2, k=1, s=1, d=1, act=True):
+    def __init__(self, c1, c2, k=1, s=1, d=1, act=True):  # 其中d是膨胀参数，act为是否使用激活函数默认是true
         """Initializes a depth-wise convolution layer with optional activation; args: input channels (c1), output
         channels (c2), kernel size (k), stride (s), dilation (d), and activation flag (act).
         """
-        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), d=d, act=act)
+        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), d=d, act=act)  # g表示卷积操作中的分组数量，这里将输入输出通道的最大公约数作为分组数量...
+        # ...这里体现了与继承的conv不同之处，DWConv 类将分组数量 g 设置为输入通道数和输出通道数的最大公约数，以用于深度可分离卷积操作。并且可能根据需要来选择act是否用激活函数
 
 
-class DWConvTranspose2d(nn.ConvTranspose2d):
+class DWConvTranspose2d(nn.ConvTranspose2d):  # 转置卷积操作，主要用于上采样
     # Depth-wise transpose convolution
     def __init__(self, c1, c2, k=1, s=1, p1=0, p2=0):
         """Initializes a depth-wise transpose convolutional layer for YOLOv5; args: input channels (c1), output channels
@@ -108,7 +112,7 @@ class DWConvTranspose2d(nn.ConvTranspose2d):
         super().__init__(c1, c2, k, s, p1, p2, groups=math.gcd(c1, c2))
 
 
-class TransformerLayer(nn.Module):
+class TransformerLayer(nn.Module):  # 执行多头自注意力操作，然后进行线性变换
     # Transformer layer https://arxiv.org/abs/2010.11929 (LayerNorm layers removed for better performance)
     def __init__(self, c, num_heads):
         """
@@ -131,7 +135,7 @@ class TransformerLayer(nn.Module):
         return x
 
 
-class TransformerBlock(nn.Module):
+class TransformerBlock(nn.Module):  # 通过堆叠 TransformerLayer 实例来构建视觉 Transformer 块。
     # Vision Transformer https://arxiv.org/abs/2010.11929
     def __init__(self, c1, c2, num_heads, num_layers):
         """Initializes a Transformer block for vision tasks, adapting dimensions if necessary and stacking specified
@@ -158,26 +162,27 @@ class TransformerBlock(nn.Module):
 
 class Bottleneck(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # shortcut表示是否采用残差连接（输入输出进行add）...
+        # ...g表示组卷积的分组数量，默认是1，e表示通道扩展比例，默认是0.5
         """Initializes a standard bottleneck layer with optional shortcut and group convolution, supporting channel
         expansion.
         """
         super().__init__()
-        c_ = int(c2 * e)  # hidden channels
+        c_ = int(c2 * e)  # hidden channels 将中间传输的通道数减少
         self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c_, c2, 3, 1, g=g)
-        self.add = shortcut and c1 == c2
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)  # 若要求输入输出通道相同则恢复原来通道数
+        self.add = shortcut and c1 == c2  # 采用add结构并且c1和c2的通道数相同，此处类似于resnet18/34结构
 
     def forward(self, x):
         """Processes input through two convolutions, optionally adds shortcut if channel dimensions match; input is a
         tensor.
         """
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))  # 这里可以选择是否进行残差连接，并返回相应的值
 
 
 class BottleneckCSP(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # n表示多少个块进行堆叠
         """Initializes CSP bottleneck with optional shortcuts; args: ch_in, ch_out, number of repeats, shortcut bool,
         groups, expansion.
         """
@@ -186,21 +191,22 @@ class BottleneckCSP(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
         self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
-        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)  # 这里是对两个c_通道拼接后的输入进行卷积
         self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
-        self.act = nn.SiLU()
+        self.act = nn.SiLU()  # 激活函数： \text{SiLU}(x) = x \cdot \sigma(x) ，其在输入为负时为0，在输出接近输入值
         self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 
     def forward(self, x):
         """Performs forward pass by applying layers, activation, and concatenation on input x, returning feature-
         enhanced output.
         """
-        y1 = self.cv3(self.m(self.cv1(x)))
+        y1 = self.cv3(self.m(self.cv1(x)))  # 此时self.cv1(x)就相当于单个块的输入
         y2 = self.cv2(x)
+        # torch.cat() 函数将两个张量 y1 和 y2 按照第一个维度（维度索引为 1）进行拼接，即(batch_size, channels * 2, height, width)。
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), 1))))
 
 
-class CrossConv(nn.Module):
+class CrossConv(nn.Module):  # 交叉卷积下采样
     # Cross Convolution Downsample
     def __init__(self, c1, c2, k=3, s=1, g=1, e=1.0, shortcut=False):
         """
@@ -220,7 +226,7 @@ class CrossConv(nn.Module):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 
-class C3(nn.Module):
+class C3(nn.Module):  # 相当于将BottleneckCSP中的归一化层、激活层、最后一个cv4的卷积层去掉，因此在此函数中的cv3输出通道与BottleneckCSPcv3不同
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         """Initializes C3 module with options for channel count, bottleneck repetition, shortcut usage, group
@@ -249,7 +255,7 @@ class C3x(C3):
         self.m = nn.Sequential(*(CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)))
 
 
-class C3TR(C3):
+class C3TR(C3):  # 含有transformer的C3结构
     # C3 module with TransformerBlock()
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         """Initializes C3 module with TransformerBlock for enhanced feature extraction, accepts channel sizes, shortcut
@@ -495,22 +501,24 @@ class DetectMultiBackend(nn.Module):
             meta = session.get_modelmeta().custom_metadata_map  # metadata
             if "stride" in meta:
                 stride, names = int(meta["stride"]), eval(meta["names"])
-        elif xml:  # OpenVINO
-            LOGGER.info(f"Loading {w} for OpenVINO inference...")
-            check_requirements("openvino>=2023.0")  # requires openvino-dev: https://pypi.org/project/openvino-dev/
-            from openvino.runtime import Core, Layout, get_batch
 
-            core = Core()
-            if not Path(w).is_file():  # if not *.xml
-                w = next(Path(w).glob("*.xml"))  # get *.xml file from *_openvino_model dir
-            ov_model = core.read_model(model=w, weights=Path(w).with_suffix(".bin"))
-            if ov_model.get_parameters()[0].get_layout().empty:
-                ov_model.get_parameters()[0].set_layout(Layout("NCHW"))
-            batch_dim = get_batch(ov_model)
-            if batch_dim.is_static:
-                batch_size = batch_dim.get_length()
-            ov_compiled_model = core.compile_model(ov_model, device_name="AUTO")  # AUTO selects best available device
-            stride, names = self._load_metadata(Path(w).with_suffix(".yaml"))  # load metadata
+        # elif xml:  # OpenVINO
+        #     LOGGER.info(f"Loading {w} for OpenVINO inference...")
+        #     check_requirements("openvino>=2023.0")  # requires openvino-dev: https://pypi.org/project/openvino-dev/
+        #     from openvino.runtime import Core, Layout, get_batch
+        #
+        #     core = Core()
+        #     if not Path(w).is_file():  # if not *.xml
+        #         w = next(Path(w).glob("*.xml"))  # get *.xml file from *_openvino_model dir
+        #     ov_model = core.read_model(model=w, weights=Path(w).with_suffix(".bin"))
+        #     if ov_model.get_parameters()[0].get_layout().empty:
+        #         ov_model.get_parameters()[0].set_layout(Layout("NCHW"))
+        #     batch_dim = get_batch(ov_model)
+        #     if batch_dim.is_static:
+        #         batch_size = batch_dim.get_length()
+        #     ov_compiled_model = core.compile_model(ov_model, device_name="AUTO")  # AUTO selects best available device
+        #     stride, names = self._load_metadata(Path(w).with_suffix(".yaml"))  # load metadata
+
         elif engine:  # TensorRT
             LOGGER.info(f"Loading {w} for TensorRT inference...")
             import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
@@ -762,6 +770,7 @@ class DetectMultiBackend(nn.Module):
 
 
 class AutoShape(nn.Module):
+    # 处理通过不同输入类型传递的图像，并执行预处理、推断和非极大值抑制（NMS）等操作，用于在不同输入格式下执行 YOLOv5 模型的推断，并支持一系列的预处理和后处理操作。
     # YOLOv5 input-robust model wrapper for passing cv2/np/PIL/torch inputs. Includes preprocessing, inference and NMS
     conf = 0.25  # NMS confidence threshold
     iou = 0.45  # NMS IoU threshold
@@ -786,12 +795,13 @@ class AutoShape(nn.Module):
             m.export = True  # do not output loss values
 
     def _apply(self, fn):
+        # 通过这个函数可以便捷的将fn函数应用在模型的各个组件上，而不用手动的遍历模型的各个部分并逐个应用函数
         """
         Applies to(), cpu(), cuda(), half() etc.
 
         to model tensors excluding parameters or registered buffers.
         """
-        self = super()._apply(fn)
+        self = super()._apply(fn)  # 调用父类的_apply方法，并将fn应用在模型的各个组件上，并将结果（包括卷积层、池化层更新后的模型）保存在self中
         if self.pt:
             m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
             m.stride = fn(m.stride)
@@ -873,8 +883,9 @@ class AutoShape(nn.Module):
 
 
 class Detections:
+    # 用于处理来自yolov5的推断结果，包括可视化，保存检测结果
     # YOLOv5 detections class for inference results
-    def __init__(self, ims, pred, files, times=(0, 0, 0), names=None, shape=None):
+    def __init__(self, ims, pred, files, times=(0, 0, 0), names=None, shape=None):  # 图像信息、预测结果、文件名、时间和归一化
         """Initializes the YOLOv5 Detections class with image info, predictions, filenames, timing and normalization."""
         super().__init__()
         d = pred[0].device  # device
@@ -893,6 +904,7 @@ class Detections:
         self.s = tuple(shape)  # inference BCHW shape
 
     def _run(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path("")):
+        # 执行模型预测，显示和/或保存输出，可选裁剪和标签,处理每个图像的预测结果，并使用边界框、置信度和类别标签对其进行标注
         """Executes model predictions, displaying and/or saving outputs with optional crops and labels."""
         s, crops = "", []
         for i, (im, pred) in enumerate(zip(self.ims, self.pred)):
@@ -946,8 +958,8 @@ class Detections:
                 LOGGER.info(f"Saved results to {save_dir}\n")
             return crops
 
-    @TryExcept("Showing images is not supported in this environment")
-    def show(self, labels=True):
+    @TryExcept("Showing images is not supported in this environment")  # 对被装饰函数show进行捕获异常，若存在异常则对括号内的信息进行报错
+    def show(self, labels=True):  # 选择显示标签
         """
         Displays detection results with optional labels.
 
@@ -955,7 +967,7 @@ class Detections:
         """
         self._run(show=True, labels=labels)  # show results
 
-    def save(self, labels=True, save_dir="runs/detect/exp", exist_ok=False):
+    def save(self, labels=True, save_dir="runs/detect/exp", exist_ok=False):  # 将检测结果保存到指定目录
         """
         Saves detection results with optional labels to a specified directory.
 
@@ -964,7 +976,7 @@ class Detections:
         save_dir = increment_path(save_dir, exist_ok, mkdir=True)  # increment save_dir
         self._run(save=True, labels=labels, save_dir=save_dir)  # save results
 
-    def crop(self, save=True, save_dir="runs/detect/exp", exist_ok=False):
+    def crop(self, save=True, save_dir="runs/detect/exp", exist_ok=False):  # 裁剪检测结果，可选择将其保存到目录
         """
         Crops detection results, optionally saves them to a directory.
 
@@ -973,12 +985,12 @@ class Detections:
         save_dir = increment_path(save_dir, exist_ok, mkdir=True) if save else None
         return self._run(crop=True, save=save, save_dir=save_dir)  # crop results
 
-    def render(self, labels=True):
+    def render(self, labels=True):  # 在图像上渲染检测结果，可选择显示标签
         """Renders detection results with optional labels on images; args: labels (bool) indicating label inclusion."""
         self._run(render=True, labels=labels)  # render results
         return self.ims
 
-    def pandas(self):
+    def pandas(self):  # 以 pandas DataFrame 的形式返回各种框格式（xyxy、xyxyn、xywh、xywhn）的检测结果。
         """
         Returns detections as pandas DataFrames for various box formats (xyxy, xyxyn, xywh, xywhn).
 
@@ -992,7 +1004,7 @@ class Detections:
             setattr(new, k, [pd.DataFrame(x, columns=c) for x in a])
         return new
 
-    def tolist(self):
+    def tolist(self):  # 将 Detections 对象转换为单个检测结果的列表，以供迭代使用。
         """
         Converts a Detections object into a list of individual detection results for iteration.
 
@@ -1011,32 +1023,33 @@ class Detections:
             for i in r
         ]
 
-    def print(self):
+    def print(self):  # 通过 LOGGER 记录当前对象状态的字符串表示。
         """Logs the string representation of the current object's state via the LOGGER."""
         LOGGER.info(self.__str__())
 
-    def __len__(self):
+    def __len__(self):  # 返回存储的结果数量。
         """Returns the number of results stored, overrides the default len(results)."""
         return self.n
 
-    def __str__(self):
+    def __str__(self):  # 返回适合打印的模型结果的字符串表示。
         """Returns a string representation of the model's results, suitable for printing, overrides default
         print(results).
         """
         return self._run(pprint=True)  # print results
 
-    def __repr__(self):
+    def __repr__(self):  # 返回 YOLOv5 对象的字符串表示，包括其类和格式化结果。
         """Returns a string representation of the YOLOv5 object, including its class and formatted results."""
         return f"YOLOv5 {self.__class__} instance\n" + self.__str__()
 
 
-class Proto(nn.Module):
+# 应用于图像分割
+class Proto(nn.Module):  # Proto 模块用于将输入图像转换为分割模型所需的掩码，其中包含了卷积层和上采样层，通过特征提取和尺寸调整来生成最终的分割结果。
     # YOLOv5 mask Proto module for segmentation models
     def __init__(self, c1, c_=256, c2=32):
         """Initializes YOLOv5 Proto module for segmentation with input, proto, and mask channels configuration."""
         super().__init__()
         self.cv1 = Conv(c1, c_, k=3)
-        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")  # 使用上采样层 upsample 进行双线性插值上采样，将特征图的尺寸扩大为原来的两倍。
         self.cv2 = Conv(c_, c_, k=3)
         self.cv3 = Conv(c_, c2)
 
@@ -1045,20 +1058,21 @@ class Proto(nn.Module):
         return self.cv3(self.cv2(self.upsample(self.cv1(x))))
 
 
+# 实现检测框架中的分类头部
 class Classify(nn.Module):
     # YOLOv5 classification head, i.e. x(b,c1,20,20) to x(b,c2)
     def __init__(
-        self, c1, c2, k=1, s=1, p=None, g=1, dropout_p=0.0
+        self, c1, c2, k=1, s=1, p=None, g=1, dropout_p=0.0  # dropout常用于丢弃某些神经元，从而防止过拟合
     ):  # ch_in, ch_out, kernel, stride, padding, groups, dropout probability
         super().__init__()
-        c_ = 1280  # efficientnet_b0 size
+        c_ = 1280  # efficientnet_b0 size （高效卷积神经网络架构，它通过同时改变网络的深度、宽度和分辨率来提高性能。） 定义了一个变量 c_，表示EfficientNet B0的输出通道数。
         self.conv = Conv(c1, c_, k, s, autopad(k, p), g)
-        self.pool = nn.AdaptiveAvgPool2d(1)  # to x(b,c_,1,1)
+        self.pool = nn.AdaptiveAvgPool2d(1)  # to x(b,c_,1,1) ，(1) 表示池化操作后的输出尺寸，这里指定为 (1, 1)，可以看作是整个输入特征图的“全局汇总”
         self.drop = nn.Dropout(p=dropout_p, inplace=True)
-        self.linear = nn.Linear(c_, c2)  # to x(b,c2)
+        self.linear = nn.Linear(c_, c2)  # to x(b,c2) ，这里是进行线性变换，通过全连接层 linear 得到最终的分类结果
 
     def forward(self, x):
         """Processes input through conv, pool, drop, and linear layers; supports list concatenation input."""
-        if isinstance(x, list):
-            x = torch.cat(x, 1)
-        return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+        if isinstance(x, list):  # 检查x是否是一个列表
+            x = torch.cat(x, 1)  # 将列表中的张量沿着第一个维度进行拼接，以防特征x在有些时候会以列表的形式存在，比如说多尺度特征融合时
+        return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))  # flatten(1)表示在第一个维度（通道维度）上进行展平，保留了批量维度。

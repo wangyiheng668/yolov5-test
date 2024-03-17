@@ -10,10 +10,10 @@ import torch.nn as nn
 from utils.downloads import attempt_download
 
 
-class Sum(nn.Module):
+class Sum(nn.Module):  # 可以根据weight的取值进行对各个层的输出进行加权求和
     """Weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070."""
 
-    def __init__(self, n, weight=False):
+    def __init__(self, n, weight=False):  # n表示输入的层数
         """Initializes a module to sum outputs of layers with number of inputs `n` and optional weighting, supporting 2+
         inputs.
         """
@@ -25,18 +25,18 @@ class Sum(nn.Module):
 
     def forward(self, x):
         """Processes input through a customizable weighted sum of `n` inputs, optionally applying learned weights."""
-        y = x[0]  # no weight
+        y = x[0]  # no weight 第一个元素为输出值
         if self.weight:
             w = torch.sigmoid(self.w) * 2
             for i in self.iter:
                 y = y + x[i + 1] * w[i]
-        else:
+        else:  # 如果不使用权重
             for i in self.iter:
                 y = y + x[i + 1]
         return y
 
 
-class MixConv2d(nn.Module):
+class MixConv2d(nn.Module):  # 混合卷积层的实现，首先将输入传给每个混合卷积层，得到每个层的输出并归一化和silu激活处理，然后对所有的层的特征图进行拼接，并再次应用silu激活
     """Mixed Depth-wise Conv https://arxiv.org/abs/1907.09595."""
 
     def __init__(self, c1, c2, k=(1, 3), s=1, equal_ch=True):
@@ -71,8 +71,9 @@ class MixConv2d(nn.Module):
 
 class Ensemble(nn.ModuleList):
     """Ensemble of models."""
+# 融合多个模型，例如YOLOv5s、YOLOv5m、YOLOv5l、YOLOv5x
 
-    def __init__(self):
+    def __init__(self):  # 继承了nn.ModuleList,用于初始化一个包含多个模型的容器，使模型融合
         """Initializes an ensemble of models to be used for aggregated predictions."""
         super().__init__()
 
@@ -87,6 +88,7 @@ class Ensemble(nn.ModuleList):
 
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     """
+    主要作用是通过加载多个模型的权重，返回一个模型的集合
     Loads and fuses an ensemble or single YOLOv5 model from weights, handling device placement and model adjustments.
 
     Example inputs: weights=[a,b,c] or a single model weights=[a] or weights=a.
@@ -118,7 +120,7 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
             m.recompute_scale_factor = None  # torch 1.11.0 compatibility
 
     # Return model
-    if len(model) == 1:
+    if len(model) == 1:  # 若只有一个模型被加载则返回单个yolov5的模型
         return model[-1]
 
     # Return detection ensemble
