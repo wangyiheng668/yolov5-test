@@ -118,12 +118,12 @@ def train(hyp, opt, device, callbacks):
         opt.data,
         opt.cfg,
         opt.resume,
-        opt.noval,
+        opt.noval,  # 是否在训练过程中不进行验证
         opt.nosave,
-        opt.workers,
+        opt.workers,  # 工作进程数
         opt.freeze,
     )
-    callbacks.run("on_pretrain_routine_start")  # 回调函数
+    callbacks.run("on_pretrain_routine_start")  # 回调函数，用于在模型预训练阶段执行特定的操作，当执行train函数时，通过调用此函数可以触发与预训练相关的回调函数
 
     # Directories
     w = save_dir / "weights"  # weights dir
@@ -162,6 +162,8 @@ def train(hyp, opt, device, callbacks):
 
         # Register actions
         for k in methods(loggers):
+            print(k)
+            # # 这里是将循环遍历 methods(loggers) 返回的方法列表，并将每个方法作为回调函数注册到 callbacks 对象的相应钩子上。
             callbacks.register_action(k, callback=getattr(loggers, k))
 
         # Process custom dataset artifact link
@@ -188,7 +190,7 @@ def train(hyp, opt, device, callbacks):
     if pretrained:  # 判断是否为预训练模型
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally 如果采用预训练的权重文件，在本地未找到则利用此函数从GitHub上下载
-        ckpt = torch.load(weights, map_location="cpu")  # load checkpoint to CPU to avoid CUDA memory leak
+        ckpt = torch.load(weights, map_location="cpu")  # load checkpoint to CPU to avoid CUDA memory leak  加载模型权重
         #   模型的配置、通道数、预测类别数、预定义锚点的参数
         model = Model(cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
         exclude = ["anchor"] if (cfg or hyp.get("anchors")) and not resume else []  # exclude keys
@@ -344,7 +346,7 @@ def train(hyp, opt, device, callbacks):
     scheduler.last_epoch = start_epoch - 1  # do not move 将学习调度器上次更新学习率所处的训练周期数设置为这次训练起始周期的前一个周期 ...
     # ... 由于last_epoch的默认值为-1，学习率调度器会认为上一次更新实在-1周期，即在训练开始前，这意味着学习率调度器会认为自己已经错过了第一个周期，只会等到第二个周期才会更新学习率
     scaler = torch.cuda.amp.GradScaler(enabled=amp)  # 初始化梯度放大器（GradientScaler），用于混合精度训练
-    # 初始化早停策略，用在训练过程中更具验证集的表现来提前终止训练，patience表示容忍验证集表现不再改善的epoch数
+    # 初始化早停策略，用在训练过程中根据验证集的表现来提前终止训练，patience表示容忍验证集表现不再改善的epoch数
     stopper, stop = EarlyStopping(patience=opt.patience), False
     compute_loss = ComputeLoss(model)  # init loss class  #初始化计算训练过程中的损失函数
     callbacks.run("on_train_start")
@@ -356,33 +358,38 @@ def train(hyp, opt, device, callbacks):
     )
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run("on_train_epoch_start")
-        model.train()
-
+        model.train()  # 将模型设为训练模式
         # Update image weights (optional, single-GPU only)
-        if opt.image_weights:
-            cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights
-            iw = labels_to_image_weights(dataset.labels, nc=nc, class_weights=cw)  # image weights
-            dataset.indices = random.choices(range(dataset.n), weights=iw, k=dataset.n)  # rand weighted idx
+        if opt.image_weights:  # 若设置了图像的权重参数
+            cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights  # 计算类别权重
+            iw = labels_to_image_weights(dataset.labels, nc=nc, class_weights=cw)  # image weights 根据类别权重计算图像的权重
+            dataset.indices = random.choices(range(dataset.n), weights=iw, k=dataset.n)  # rand weighted idx  根据图像的权重重新采样数据集的索引
 
         # Update mosaic border (optional)
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(3, device=device)  # mean losses
+        mloss = torch.zeros(3, device=device)  # mean losses  存储损失值
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
-        pbar = enumerate(train_loader)  # 在每一个循环中使用此数据加载器，数据加载器将返回一个
+        pbar = enumerate(train_loader)  # 在每一个循环中使用此数据加载器，数据加载器将返回一个带索引和数据的数组，其中索引以批次为单位
         LOGGER.info(("\n" + "%11s" * 7) % ("Epoch", "GPU_mem", "box_loss", "obj_loss", "cls_loss", "Instances", "Size"))
-        if RANK in {-1, 0}:
-            pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
-        optimizer.zero_grad()
+        if RANK in {-1, 0}:  # 表示唯一进程
+            pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar  # 用于创建一个进度条用来显示训练进度
+        optimizer.zero_grad()  # 每个训练周期开始将优化器的梯度归零
+        # 遍历数据加载器中每个批次的数据
+        # i：当前周期内的批次索引。
+        # imgs：图像批次。
+        # targets：相应目标（标签）的批次。
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             callbacks.run("on_train_batch_start")
-            ni = i + nb * epoch  # number integrated batches (since train start)
-            imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
+            # number integrated batches (since train start)  # 计算从开始到现在已经累计的批次数量，其中nb是每个周期的批次数量，epoch是周期数，i表示当前批次在周期中的索引
+            ni = i + nb * epoch
+            # uint8 to float32, 0-255 to 0.0-1.0  用于将图像数据转移到gpu，且将像素值转换到0.0-1.0
+            imgs = imgs.to(device, non_blocking=True).float() / 255
 
-            # Warmup
-            if ni <= nw:
+            # Warmup  用于在训练初期调整学习率
+            if ni <= nw:  # 若当前的训练批次小于指定的批次nw
                 xi = [0, nw]  # x interp
                 # compute_loss.gr = np.interp(ni, xi, [0.0, 1.0])  # iou loss ratio (obj_loss = 1.0 or iou)
                 accumulate = max(1, np.interp(ni, xi, [1, nbs / batch_size]).round())
@@ -393,35 +400,41 @@ def train(hyp, opt, device, callbacks):
                         x["momentum"] = np.interp(ni, xi, [hyp["warmup_momentum"], hyp["momentum"]])
 
             # Multi-scale
+            # 使用多尺度训练，每个训练迭代中使用不同尺度大小的图像。
             if opt.multi_scale:
-                sz = random.randrange(int(imgsz * 0.5), int(imgsz * 1.5) + gs) // gs * gs  # size
+                # size 尺度变换在原始图像的0.5到1.5倍之间，并确保是gird size的倍数
+                sz = random.randrange(int(imgsz * 0.5), int(imgsz * 1.5) + gs) // gs * gs
+                # 新尺度与原始图像尺度的比率
                 sf = sz / max(imgs.shape[2:])  # scale factor
                 if sf != 1:
+                    # 将每个原始图像的每个尺度按照上式sf缩放因子进行缩放
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
+                    # 并将原始图像利用双线性插值将图形插值到新的尺寸ns
                     imgs = nn.functional.interpolate(imgs, size=ns, mode="bilinear", align_corners=False)
 
             # Forward
-            with torch.cuda.amp.autocast(amp):
-                pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+            with torch.cuda.amp.autocast(amp):  # 采用混合精度计算，将浮点数转换成半浮点数，amp是一个布尔值，决定是否开启混合精度训练
+                pred = model(imgs)  # forward  # 利用模型将图片作为输入进行前向传播
+                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size调用compute_loss计算损失
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
-                if opt.quad:
+                if opt.quad:  # 如果启用了四通道模式，则将计算得到的损失值乘以4，这样做更利于调整学习率
                     loss *= 4.0
 
             # Backward
-            scaler.scale(loss).backward()
+            scaler.scale(loss).backward()  # 反向传播
 
             # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
-            if ni - last_opt_step >= accumulate:
+            if ni - last_opt_step >= accumulate:  # 是否达到了累计梯度的步骤数，last_opt_step 表示上一次执行优化步骤的迭代步数
                 scaler.unscale_(optimizer)  # unscale gradients
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
-                scaler.step(optimizer)  # optimizer.step
-                scaler.update()
-                optimizer.zero_grad()
+                # clip gradients  对模型的梯度进行裁剪，确保梯度的范数不超过给定的最大值（这里是10.0）
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+                scaler.step(optimizer)  # optimizer.step  混合精度训练中，由于梯度被缩放过，所以需要用scaler来执行梯度更新操作。
+                scaler.update()  # 下一次梯度更新时使用新的缩放因子。
+                optimizer.zero_grad()  # 将优化器中的梯度置零，以便下一次迭代计算新的梯度。
                 if ema:
                     ema.update(model)  # 在每一个训练批次中执行，用以确保指数移动平均模型的参数与当前模型的参数保持同步。
-                last_opt_step = ni
+                last_opt_step = ni  # 更新 last_opt_step 为当前的迭代步数 ni
 
             # Log
             if RANK in {-1, 0}:

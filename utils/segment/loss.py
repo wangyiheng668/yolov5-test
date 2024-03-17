@@ -21,10 +21,13 @@ class ComputeLoss:
         h = model.hyp  # hyperparameters
 
         # Define criteria
+        # 获取分类检测的损失值计算
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device))
+        # 获取目标检测的损失值计算
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["obj_pw"]], device=device))
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
+        # 获取训练样本中生成标签平滑后的二元交叉熵（BCE）损失的目标值
         self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
         # Focal loss

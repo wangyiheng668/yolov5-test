@@ -8,9 +8,10 @@ from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 
 
+# 执行标签平滑的二元交叉熵损失的目标定义
 def smooth_BCE(eps=0.1):
     """Returns label smoothing BCE targets for reducing overfitting; pos: `1.0 - 0.5*eps`, neg: `0.5*eps`. For details see https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441"""
-    return 1.0 - 0.5 * eps, 0.5 * eps
+    return 1.0 - 0.5 * eps, 0.5 * eps  # eps代表平滑的强度， 目标值被设定为 1.0 - 0.5*eps，而对于负样本，目标值被设定为 0.5*eps。
 
 
 class BCEBlurWithLogitsLoss(nn.Module):
@@ -117,67 +118,78 @@ class ComputeLoss:
         self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
         # Focal loss
-        g = h["fl_gamma"]  # focal loss gamma
+        g = h["fl_gamma"]  # focal loss gamma  # 衰减因子
         if g > 0:
             BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
 
-        m = de_parallel(model).model[-1]  # Detect() module
+        m = de_parallel(model).model[-1]  # Detect() module  转换为单gpu模式
+        # 根据模型的层数设置不同的损失平衡参数
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 1.0, h, autobalance
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
-        self.anchors = m.anchors
+        self.anchors = m.anchors  # 锚框列表
         self.device = device
 
-    def __call__(self, p, targets):  # predictions, targets
+    def __call__(self, p, targets):  # predictions, targets 其中p是给定的预测值
         """Performs forward pass, calculating class, box, and object loss for given predictions and targets."""
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
+        # 分类目标 tcls、框回归目标 tbox、匹配的索引 indices 和锚框 anchors
         tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
 
         # Losses
+        # pi是对应索引第i个预测的预测值，每个pi含边界框的中心坐标、宽度和高度，以及每个类别的概率分数等信息
         for i, pi in enumerate(p):  # layer index, layer predictions
-            b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
+            # 索引 b 指示了当前预测值 p 属于批次中的哪个图像。
+            b, a, gj, gi = indices[i]  # image索引, anchor索引, gridy, gridx 根据这些索引用于构建目标
             tobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
 
-            n = b.shape[0]  # number of targets
-            if n:
+            n = b.shape[0]  # number of targets 获取当前预测值中检测到的目标数
+            if n:  # 如果有目标
                 # pxy, pwh, _, pcls = pi[b, a, gj, gi].tensor_split((2, 4, 5), dim=1)  # faster, requires torch 1.8.0
+                # 将当前预测值pi拆分为预测的边界框中心坐标 pxy、宽高 pwh、忽略信息 _ 和类别概率 pcls
                 pxy, pwh, _, pcls = pi[b, a, gj, gi].split((2, 2, 1, self.nc), 1)  # target-subset of predictions
 
                 # Regression
+                # 用sigmoid函数的目的是将其范围缩放到（0，1），然后再缩放到 (-0.5, 1.5)目的是使得预测框的中心坐标相对于网格单元的偏移量能够覆盖更广泛的范围，即能体现0和1这两个边界
                 pxy = pxy.sigmoid() * 2 - 0.5
+                # 乘以 2 再取平方的操作可以扩展预测框宽高的范围
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
+                # 将预测框的中心坐标和宽高信息拼接在一起，形成最终的预测框
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
+                # 计算检测框与目标框的交并比iou
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
+                # 将每个预测框的iou与1取差值再取平均，并累加到总的框回归损失中
                 lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
+                # 将已经计算得出的iou进行处理，并将其限制在0以上，且不再保留梯度信息
                 iou = iou.detach().clamp(0).type(tobj.dtype)
-                if self.sort_obj_iou:
+                if self.sort_obj_iou:  # 若为真对iou进行排序
                     j = iou.argsort()
                     b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
                 if self.gr < 1:
-                    iou = (1.0 - self.gr) + self.gr * iou
+                    iou = (1.0 - self.gr) + self.gr * iou  # 通过线性插值的方式对iou进行调整，使其在原始值和1之间
                 tobj[b, a, gj, gi] = iou  # iou ratio
 
                 # Classification
-                if self.nc > 1:  # cls loss (only if multiple classes)
-                    t = torch.full_like(pcls, self.cn, device=self.device)  # targets
-                    t[range(n), tcls[i]] = self.cp
-                    lcls += self.BCEcls(pcls, t)  # BCE
+                if self.nc > 1:  # cls loss (only if multiple classes) 若类别数量大于1
+                    t = torch.full_like(pcls, self.cn, device=self.device)  # targets 创建目标类别的索引
+                    t[range(n), tcls[i]] = self.cp  # 表示正样本的类别
+                    lcls += self.BCEcls(pcls, t)  # BCE  使用二元交叉熵损失
 
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-            obji = self.BCEobj(pi[..., 4], tobj)
-            lobj += obji * self.balance[i]  # obj loss
+            obji = self.BCEobj(pi[..., 4], tobj)  # 计算预测框为目标的概率（置信度），tobj 是真实的目标存在性标签
+            lobj += obji * self.balance[i]  # obj loss  lobj 是目标存在性损失的累加器
             if self.autobalance:
-                self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
+                self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()  # 通常情况下，存在性损失越大，权重越小
 
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
@@ -186,6 +198,7 @@ class ComputeLoss:
         lcls *= self.hyp["cls"]
         bs = tobj.shape[0]  # batch size
 
+        # 返回了总损失值和各部分损失值的张量。总损失值是框回归损失、目标存在性损失和分类损失的加权和，乘以批次大小
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
 
     def build_targets(self, p, targets):
@@ -194,11 +207,14 @@ class ComputeLoss:
         """
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         tcls, tbox, indices, anch = [], [], [], []
+        # 创建了一个大小为 7 的张量，并将其初始化为全 1，用于归一化到格子空间的增益（gain）
         gain = torch.ones(7, device=self.device)  # normalized to gridspace gain
+        # 这里生成了一个形状为 (na, nt) 的张量 ai，用于表示每个锚框对应的索引
         ai = torch.arange(na, device=self.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[..., None]), 2)  # append anchor indices
 
         g = 0.5  # bias
+        # 定义了偏移（offsets）的张量，用于后续计算。
         off = (
             torch.tensor(
                 [
@@ -214,6 +230,7 @@ class ComputeLoss:
             * g
         )  # offsets
 
+        # 用于处理每个输出层的数据
         for i in range(self.nl):
             anchors, shape = self.anchors[i], p[i].shape
             gain[2:6] = torch.tensor(shape)[[3, 2, 3, 2]]  # xyxy gain
@@ -223,8 +240,10 @@ class ComputeLoss:
             if nt:
                 # Matches
                 r = t[..., 4:6] / anchors[:, None]  # wh ratio
+                # 判断比值是否小于预设的阈值，得到匹配结果。
                 j = torch.max(r, 1 / r).max(2)[0] < self.hyp["anchor_t"]  # compare
                 # j = wh_iou(anchors, t[:, 4:6]) > model.hyp['iou_t']  # iou(3,n)=wh_iou(anchors(3,2), gwh(n,2))
+                # 根据匹配结果筛选目标数据
                 t = t[j]  # filter
 
                 # Offsets
@@ -251,4 +270,5 @@ class ComputeLoss:
             anch.append(anchors[a])  # anchors
             tcls.append(c)  # class
 
+        # 返回处理后的类别、框、索引和锚框信息。
         return tcls, tbox, indices, anch

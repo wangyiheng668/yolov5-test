@@ -165,11 +165,11 @@ def create_dataloader(
     augment=False,
     cache=False,
     pad=0.0,
-    rect=False,
+    rect=False,  # 若开启矩形训练，则可以根据不同尺寸的输入图像进行调整
     rank=-1,
     workers=8,
     image_weights=False,
-    quad=False,
+    quad=False,  # 是否使用四通道数据加载，通常使用三通道（RGB）
     prefix="",
     shuffle=False,
     seed=0,
@@ -208,10 +208,11 @@ def create_dataloader(
         num_workers=nw,
         sampler=sampler,
         pin_memory=PIN_MEMORY,
+        # 如何将样本混合成一个批次，通常一个图像若为rgb三通道时，会将其三通道的特征图按照顺序堆叠在一起，例如：(batch_size, 3, height, width)
         collate_fn=LoadImagesAndLabels.collate_fn4 if quad else LoadImagesAndLabels.collate_fn,
         worker_init_fn=seed_worker,
         generator=generator,
-    ), dataset
+    ), dataset  # 返回的是经过lodar数据加载迭代的多个输入数据或者标签
 
 
 class InfiniteDataLoader(dataloader.DataLoader):
@@ -314,6 +315,7 @@ class LoadScreenshots:
         return str(self.screen), im, im0, None, s  # screen, img, original img, im0s, s
 
 
+# 加载 YOLOv5 检测器所需图像和视频数据的数据
 class LoadImages:
     """YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`"""
 
@@ -426,6 +428,7 @@ class LoadImages:
         return self.nf  # number of files
 
 
+# 从视频流中读取帧，并准备将它们送入 YOLOv5 模型进行目标检测
 class LoadStreams:
     # YOLOv5 streamloader, i.e. `python detect.py --source 'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`
     def __init__(self, sources="file.streams", img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
@@ -529,9 +532,11 @@ def img2label_paths(img_paths):
     return [sb.join(x.rsplit(sa, 1)).rsplit(".", 1)[0] + ".txt" for x in img_paths]
 
 
+# 加载训练和验证所需的图像和标签数据
 class LoadImagesAndLabels(Dataset):
     # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
     cache_version = 0.6  # dataset labels *.cache version
+    # 多种随机插值方法列表
     rand_interp_methods = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
 
     def __init__(
@@ -563,6 +568,7 @@ class LoadImagesAndLabels(Dataset):
         self.path = path
         self.albumentations = Albumentations(size=img_size) if augment else None
 
+        # 如果path参数是一个文件夹，则递归回去文件夹中图像文件，如果是文件，则直接读取图像文件列表
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
@@ -625,11 +631,11 @@ class LoadImagesAndLabels(Dataset):
 
         # Create indices
         n = len(self.shapes)  # number of images
-        bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index
+        bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index计算每个图像所属的批次索引
         nb = bi[-1] + 1  # number of batches
-        self.batch = bi  # batch index of image
-        self.n = n
-        self.indices = np.arange(n)
+        self.batch = bi  # batch index of image 将批次索引存储在self.batch中
+        self.n = n  # 存储图像总数
+        self.indices = np.arange(n)  # 创建一个数组，包含从0到n-1 方便后续调用图像
         if rank > -1:  # DDP indices (see: SmartDistributedSampler)
             # force each rank (i.e. GPU process) to sample the same subset of data on every epoch
             self.indices = self.indices[np.random.RandomState(seed=seed).permutation(n) % WORLD_SIZE == RANK]

@@ -350,9 +350,11 @@ class ClassificationModel(BaseModel):
         """
         if isinstance(model, DetectMultiBackend):
             model = model.model  # unwrap DetectMultiBackend
-        model.model = model.model[:cutoff]  # backbone
-        m = model.model[-1]  # last layer
+        model.model = model.model[:cutoff]  # backbone仅保留前cutoff层，通常用于去掉检测头部分
+        m = model.model[-1]  # last layer 截取模型的最后一层
+        # 获取模型最后一层的输入通道数
         ch = m.conv.in_channels if hasattr(m, "conv") else m.cv1.conv.in_channels  # ch into module
+        # 创建了一个分类层，并传入通道数ch和类别数量nc
         c = Classify(ch, nc)  # Classify()
         c.i, c.f, c.type = m.i, m.f, "models.common.Classify"  # index, from, type
         model.model[-1] = c  # replace

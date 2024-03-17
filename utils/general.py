@@ -580,7 +580,7 @@ def check_dataset(data, autodownload=True):
     return data  # dictionary
 
 
-def check_amp(model):
+def check_amp(model):  # 用于检测模型是否开启混合精度训练
     """Checks PyTorch AMP functionality for a model, returns True if AMP operates correctly, otherwise False."""
     from models.common import AutoShape, DetectMultiBackend
 

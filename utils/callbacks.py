@@ -30,8 +30,9 @@ class Callbacks:
             "on_params_update": [],
             "teardown": [],
         }
-        self.stop_training = False  # set True to interrupt training
+        self.stop_training = False  # set True to interrupt training 这里控制是否用于早停
 
+    # hook 是self._callbacks中的名称，callback是在其它函数中调用的回调函数名称
     def register_action(self, hook, name="", callback=None):
         """
         Register a new action to a callback hook.
@@ -45,7 +46,7 @@ class Callbacks:
         assert callable(callback), f"callback '{callback}' is not callable"
         self._callbacks[hook].append({"name": name, "callback": callback})
 
-    def get_registered_actions(self, hook=None):
+    def get_registered_actions(self, hook=None):  # 表示获取指定回调钩子hook上的已注册所有动作，若没有提供hook，返回所有钩子上的动作
         """
         Returns all the registered actions by callback hook.
 
@@ -54,7 +55,7 @@ class Callbacks:
         """
         return self._callbacks[hook] if hook else self._callbacks
 
-    def run(self, hook, *args, thread=False, **kwargs):
+    def run(self, hook, *args, thread=False, **kwargs):  # thread：一个布尔值，False，表示在主线程中运行。
         """
         Loop through the registered actions and fire all callbacks on main thread.
 

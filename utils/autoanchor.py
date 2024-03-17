@@ -86,18 +86,19 @@ def kmean_anchors(dataset="./data/coco128.yaml", n=9, img_size=640, thr=4.0, gen
     thr = 1 / thr
 
     def metric(k, wh):  # compute metrics
-        r = wh[:, None] / k[None]
-        x = torch.min(r, 1 / r).min(2)[0]  # ratio metric
+        r = wh[:, None] / k[None]  # wh 扩展为列向量（[:, None]）和将 k 扩展为行向量（[None]），计算了每个标签框和预测框之间的比率
+        x = torch.min(r, 1 / r).min(2)[0]  # ratio metric 沿着列向量取每行的最小值，其中这个最小值是有一个包含（最小值，对应索引张良）的数组，这些数组构成张量
         # x = wh_iou(wh, torch.tensor(k))  # iou metric
-        return x, x.max(1)[0]  # x, best_x
+        return x, x.max(1)[0]  # x, best_x   x.max(1)是按照每列取最大值，x.max(1)[0]是每列最大值构成的张量
 
     def anchor_fitness(k):  # mutation fitness
         _, best = metric(torch.tensor(k, dtype=torch.float32), wh)
         return (best * (best > thr).float()).mean()  # fitness
 
-    def print_results(k, verbose=True):
-        k = k[np.argsort(k.prod(1))]  # sort small to large
-        x, best = metric(k, wh0)
+    def print_results(k, verbose=True):  # 用于打印结果并返回排序后的k值
+        k = k[np.argsort(k.prod(1))]  # sort small to large  排序方式是按照每行元素的乘积由小到大排列
+        x, best = metric(k, wh0)  # 调用metric函数传入排序后的k值和wh_0参数，其中wh_0是包含标签宽度和高度的数组
+        # 计算最佳召回率bpr和超过阈值的锚点数量aat，其中thr是阈值
         bpr, aat = (best > thr).float().mean(), (x > thr).float().mean() * n  # best possible recall, anch > thr
         s = (
             f"{PREFIX}thr={thr:.2f}: {bpr:.4f} best possible recall, {aat:.2f} anchors past thr\n"
@@ -118,7 +119,12 @@ def kmean_anchors(dataset="./data/coco128.yaml", n=9, img_size=640, thr=4.0, gen
         dataset = LoadImagesAndLabels(data_dict["train"], augment=True, rect=True)
 
     # Get label wh
+    # dataset.shapes每行代表一张图像的形状，img_size 乘以 dataset.shapes，这样做是为了将图像的实际形状转换为与 img_size 相同的尺寸空间
+    # img_size * dataset.shapes / dataset.shapes.max(1, keepdims=True)：将每张图像的形状与其最大值进行归一化计算，得到相对于img_size 的比例
     shapes = img_size * dataset.shapes / dataset.shapes.max(1, keepdims=True)
+    # 每张图像的形状和对应的标签一一配对，分别用s和l表示，然后将每个目标的宽度和高度
+    # l[:, 3:5]：从标签中获取每个目标的第四列（通常是左上角坐标）到第五列（通常是右下角坐标），这样得到的是每个目标的宽度和高度。
+    # 然后在*s，将标签也相应的缩放，得到一个含w和h的数组wh0
     wh0 = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes, dataset.labels)])  # wh
 
     # Filter
