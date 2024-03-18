@@ -553,7 +553,7 @@ def train(hyp, opt, device, callbacks):
 
         callbacks.run("on_train_end", last, best, epoch, results)
 
-    torch.cuda.empty_cache()
+    torch.cuda.empty_cache()  # 清空cuda缓存
     return results
 
 
@@ -857,7 +857,7 @@ def main(opt, callbacks=Callbacks()):
             population = next_generation
         # Print the best solution found
         best_index = fitness_scores.index(max(fitness_scores))
-        best_individual = population[best_index]
+        best_individual = population[best_index]  # 得到适应度最高的个体，此个体是一个向量，包含了所有参数
         print("Best solution found:", best_individual)
         # Plot results
         plot_evolve(evolve_csv)

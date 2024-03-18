@@ -384,10 +384,10 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
-    if not ch_mul:
+    if not ch_mul:  # 是否指定了通道数
         ch_mul = 8
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)  模型的所有输出量（锚点数量乘以（类别数量加上5））
+    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)  模型的所有输出量（输出的维度）（锚点数量乘以（类别数量加上5））
 
     # layers 用于存储模型的各个层次，save 用于存储需要保存特征图的层次索引
     # 将当前层次的输出通道数初始化为输入通道列表ch的最后一个值，这样通过不断更新ch，确保了每个模块在构建过程中都以前一个模块的输出通道数作为输入通道数，从而保持通道数的连续性。
@@ -446,8 +446,10 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
         else:
             c2 = ch[f]
 
+        # 根据模块类型 m、参数 args 和重复次数 n 构建模块 m_。
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
         t = str(m)[8:-2].replace("__main__.", "")  # module type
+        # 计算即模型的参数量。
         np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f"{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}")  # print
@@ -456,6 +458,7 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
         if i == 0:
             ch = []
         ch.append(c2)
+    # 将构建好的模块列表传递给 nn.Sequential 构建一个包含所有模块的神经网络模型。并保存列表进行排序
     return nn.Sequential(*layers), sorted(save)
 
 

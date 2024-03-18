@@ -356,9 +356,13 @@ def run(
     if not training:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ""
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
-    maps = np.zeros(nc) + map
+    maps = np.zeros(nc) + map  # 用map值填充
+    # 遍历结果中的类别，和对应的精度
     for i, c in enumerate(ap_class):
-        maps[c] = ap[i]
+        maps[c] = ap[i]  # 将每个类别的ap值更新到maps中
+    # 共返回了三个元组，第一个元组包含精确度（precision）、召回率（recall）、50% IoU 平均精度（mAP@0.5）、整体平均精度（mAP）以及损失值（loss）的平均值
+    # 第二个元组maps 包含了每个类别的平均精度（AP）
+    # 第三个元组t用于返回其它信息
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
 
