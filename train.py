@@ -450,15 +450,19 @@ def train(hyp, opt, device, callbacks):
             # end batch ------------------------------------------------------------------------------------------------
 
         # Scheduler
-        lr = [x["lr"] for x in optimizer.param_groups]  # for loggers
+        lr = [x["lr"] for x in optimizer.param_groups]  # for loggers 将每个参数组的学习率存储在lr列表中
         scheduler.step()  # 修改学习率
 
         if RANK in {-1, 0}:
             # mAP
             callbacks.run("on_train_epoch_end", epoch=epoch)
+            # 更新指数滑动平均模型的属性
             ema.update_attr(model, include=["yaml", "nc", "hyp", "names", "stride", "class_weights"])
+            # 确定是否是最后一个epoch
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
+            # 检查是否需要进行验证，或者是否是最后一个epoch。
             if not noval or final_epoch:  # Calculate mAP
+                # 运行验证过程，获取验证结果和mAP
                 results, maps, _ = validate.run(
                     data_dict,
                     batch_size=batch_size // WORLD_SIZE * 2,
@@ -474,7 +478,9 @@ def train(hyp, opt, device, callbacks):
                 )
 
             # Update best mAP
+            # 根据Precision、Recall和mAP等指标进行加权组合得到的综合分数。
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            # 检查是否满足提前停止的条件。
             stop = stopper(epoch=epoch, fitness=fi)  # early stop check
             if fi > best_fitness:
                 best_fitness = fi
@@ -499,8 +505,10 @@ def train(hyp, opt, device, callbacks):
                 torch.save(ckpt, last)
                 if best_fitness == fi:
                     torch.save(ckpt, best)
+                # 当前epoch满足保存周期的条件，则保存模型参数到文件中，文件名包含了当前epoch数。
                 if opt.save_period > 0 and epoch % opt.save_period == 0:
                     torch.save(ckpt, w / f"epoch{epoch}.pt")
+                # 删除保存模型的临时变量，释放内存空间
                 del ckpt
                 callbacks.run("on_model_save", last, epoch, final_epoch, best_fitness, fi)
 
@@ -516,9 +524,11 @@ def train(hyp, opt, device, callbacks):
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training -----------------------------------------------------------------------------------------------------
     if RANK in {-1, 0}:
+        # 输出训练已完成的epoch数以及训练所花费的时间，以小时为单位。
         LOGGER.info(f"\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.")
         for f in last, best:
             if f.exists():
+                # 移除优化器信息，保留模型参数。
                 strip_optimizer(f)  # strip optimizers
                 if f is best:
                     LOGGER.info(f"\nValidating {f}...")
@@ -526,6 +536,7 @@ def train(hyp, opt, device, callbacks):
                         data_dict,
                         batch_size=batch_size // WORLD_SIZE * 2,
                         imgsz=imgsz,
+                        # 进行验证，获取验证结果。验证时使用模型加载函数attempt_load加载模型参数
                         model=attempt_load(f, device).half(),
                         iou_thres=0.65 if is_coco else 0.60,  # best pycocotools at iou 0.65
                         single_cls=single_cls,
