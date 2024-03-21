@@ -38,8 +38,8 @@ def convert(size, box):  # 用于将边界框坐标从Pascal VOC格式转化到Y
 
 
 def convert_annotation(image_id):  # 用于将边界框坐标从Pascal VOC格式转化到YOLO格式
-    in_file = open('VOCdevkit/VOC2007/Annotations/%s.xml' %image_id)
-    out_file = open('VOCdevkit/VOC2007/YOLOLabels/%s.txt' %image_id, 'w')
+    in_file = open('E:/code/pycham/yolo/datasets/VOCdevkit/VOC2007/Annotations/%s.xml' %image_id)
+    out_file = open('E:/code/pycham/yolo/datasets/VOCdevkit/VOC2007/YOLOLabels/%s.txt' %image_id, 'w')
     tree=ET.parse(in_file)
     root = tree.getroot()
     size = root.find('size')
