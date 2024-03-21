@@ -716,6 +716,7 @@ def one_cycle(y1=0.0, y2=1.0, steps=100):  # 余弦退火学习率调度函数�
 
 def colorstr(*input):
     """
+    改变字体的颜色
     Colors a string using ANSI escape codes, e.g., colorstr('blue', 'hello world').
 
     See https://en.wikipedia.org/wiki/ANSI_escape_code.
@@ -1235,7 +1236,7 @@ def increment_path(path, exist_ok=False, sep="", mkdir=False):
     Example: runs/exp --> runs/exp{sep}2, runs/exp{sep}3, ... etc
     """
     path = Path(path)  # os-agnostic
-    if path.exists() and not exist_ok:
+    if path.exists() and not exist_ok:  # path如果存在且exist_ok为False，则表示不允许返回已存在的路径，需要生成递增的路径。
         path, suffix = (path.with_suffix(""), path.suffix) if path.is_file() else (path, "")
 
         # Method 1
@@ -1252,7 +1253,7 @@ def increment_path(path, exist_ok=False, sep="", mkdir=False):
         # n = max(i) + 1 if i else 2  # increment number
         # path = Path(f"{path}{sep}{n}{suffix}")  # increment path
 
-    if mkdir:
+    if mkdir:  # 是否创建目录
         path.mkdir(parents=True, exist_ok=True)  # make directory
 
     return path

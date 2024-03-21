@@ -133,8 +133,9 @@ def train(hyp, opt, device, callbacks):
     # Hyperparameters
     if isinstance(hyp, str):  # 如果参数类型是字符串则尝试从路径加载YAML格式的文件，并将超参数存储在hyp变量中
         with open(hyp, errors="ignore") as f:  # errors="ignore" 表示在遇到无法解码的字符时，将忽略这些错误而继续读取文件内容
-            hyp = yaml.safe_load(f)  # load hyps dict
-    LOGGER.info(colorstr("hyperparameters: ") + ", ".join(f"{k}={v}" for k, v in hyp.items()))  # info用于记录信息级别的日志
+            hyp = yaml.safe_load(f)  # load hyps dict  加载文件中的所有参数并将其保存为字典形式。
+    # info用于记录信息级别的日志，并调用函数修改字体颜色，key和value用不同颜色区分
+    LOGGER.info(colorstr("hyperparameters: ") + ", ".join(f"{k}={v}" for k, v in hyp.items()))
     opt.hyp = hyp.copy()  # for saving hyps to checkpoints 复制一份到opt.hyp，以便于保留最初的超参数
 
     # Save run settings
@@ -192,6 +193,7 @@ def train(hyp, opt, device, callbacks):
             weights = attempt_download(weights)  # download if not found locally 如果采用预训练的权重文件，在本地未找到则利用此函数从GitHub上下载
         ckpt = torch.load(weights, map_location="cpu")  # load checkpoint to CPU to avoid CUDA memory leak  加载模型权重
         #   模型的配置、通道数、预测类别数、预定义锚点的参数
+        # 在这里如果参数parges中的cfg没有定义的话，则从检查点（yolo.py）中的模型定义中提取，这里指的是detectionMoudel类
         model = Model(cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
         exclude = ["anchor"] if (cfg or hyp.get("anchors")) and not resume else []  # exclude keys
         csd = ckpt["model"].float().state_dict()  # checkpoint state_dict as FP32
@@ -561,8 +563,9 @@ def parse_opt(known=False):
     """Parses command-line arguments for YOLOv5 training, validation, and testing."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--weights", type=str, default=ROOT / "yolov5s.pt", help="initial weights path")
-    parser.add_argument("--cfg", type=str, default="", help="model.yaml path")
-    parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="dataset.yaml path")
+    # 如果这里不定义的话则会利用196行附近的model=Model（）来提取yolo中detectionmodel类中的配置cfg
+    parser.add_argument("--cfg", type=str, default=ROOT / "models/yolov5s_ball.yaml", help="model.yaml path")
+    parser.add_argument("--data", type=str, default=ROOT / "data/voc_ball.yaml", help="dataset.yaml path")
     parser.add_argument("--hyp", type=str, default=ROOT / "data/hyps/hyp.scratch-low.yaml", help="hyperparameters path")
     parser.add_argument("--epochs", type=int, default=100, help="total training epochs")
     parser.add_argument("--batch-size", type=int, default=16, help="total batch size for all GPUs, -1 for autobatch")
@@ -583,10 +586,11 @@ def parse_opt(known=False):
     parser.add_argument("--image-weights", action="store_true", help="use weighted image selection for training")
     parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
     parser.add_argument("--multi-scale", action="store_true", help="vary img-size +/- 50%%")
+    # action="store_true"意为当此参数调用时，即只要在脚本中使用了此参数则定义为true
     parser.add_argument("--single-cls", action="store_true", help="train multi-class data as single-class")
     parser.add_argument("--optimizer", type=str, choices=["SGD", "Adam", "AdamW"], default="SGD", help="optimizer")
     parser.add_argument("--sync-bn", action="store_true", help="use SyncBatchNorm, only available in DDP mode")
-    parser.add_argument("--workers", type=int, default=8, help="max dataloader workers (per RANK in DDP mode)")
+    parser.add_argument("--workers", type=int, default=6, help="max dataloader workers (per RANK in DDP mode)")
     parser.add_argument("--project", default=ROOT / "runs/train", help="save to project/name")
     parser.add_argument("--name", default="exp", help="save to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
@@ -615,7 +619,7 @@ def parse_opt(known=False):
 def main(opt, callbacks=Callbacks()):
     """Runs training or hyperparameter evolution with specified options and optional callbacks."""
     if RANK in {-1, 0}:
-        print_args(vars(opt))
+        print_args(vars(opt))  # 返回的是opt对象的dict属性，是一个字典，包含了opt对象的所有属性和对应的值
         check_git_status()
         check_requirements(ROOT / "requirements.txt")
 
@@ -647,7 +651,7 @@ def main(opt, callbacks=Callbacks()):
                 opt.project = str(ROOT / "runs/evolve")
             opt.exist_ok, opt.resume = opt.resume, False  # pass resume to exist_ok and disable resume
         if opt.name == "cfg":
-            opt.name = Path(opt.cfg).stem  # use model.yaml as name
+            opt.name = Path(opt.cfg).stem  # use model.yaml as name并去除后缀名
         opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
 
     # DDP mode
@@ -868,13 +872,13 @@ def main(opt, callbacks=Callbacks()):
         )
 
 
-def generate_individual(input_ranges, individual_length):
+def generate_individual(input_ranges, individual_length):  # 接收每个基因（超参数）的取值范围，个体的长度（基因的数量）
     """Generates a list of random values within specified input ranges for each gene in the individual."""
     individual = []
     for i in range(individual_length):
         lower_bound, upper_bound = input_ranges[i]
         individual.append(random.uniform(lower_bound, upper_bound))
-    return individual
+    return individual  # 最终返回一个生成的个体列表
 
 
 def run(**kwargs):

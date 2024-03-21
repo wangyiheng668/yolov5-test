@@ -7,7 +7,9 @@ import threading
 
 
 def emojis(str=""):
-    """Returns an emoji-safe version of a string, stripped of emojis on Windows platforms."""
+    """
+    由于windows不支持包含表情符号的字符串，因此此函数就是用于处理字符串中的表情符号
+    Returns an emoji-safe version of a string, stripped of emojis on Windows platforms."""
     return str.encode().decode("ascii", "ignore") if platform.system() == "Windows" else str
 
 

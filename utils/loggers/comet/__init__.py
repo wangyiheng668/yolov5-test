@@ -4,7 +4,14 @@ import logging
 import os
 import sys
 from pathlib import Path
+from comet_ml import Experiment
 
+# 设置默认 Comet 凭证信息  此处为后来增添 2024/3/21wangyiheng
+comet_experiment = Experiment(
+    api_key="lpZFdFAQ7xljVCYAWa4xCkKnm",
+    project_name="YOLOV5",
+    workspace="yolo-v5"
+)
 logger = logging.getLogger(__name__)
 
 FILE = Path(__file__).resolve()
@@ -100,6 +107,7 @@ class CometLogger:
 
         self.logged_images_count = 0
         self.max_images = COMET_MAX_IMAGE_UPLOADS
+        self.logger = logging.getLogger(__name__)  # 由于以下check_dataset中的异常处理使用了self.logger，故此处需加
 
         if run_id is None:
             self.experiment.log_other("Created from", "YOLOv5")
@@ -241,10 +249,19 @@ class CometLogger:
                 overwrite=True,
             )
 
-    def check_dataset(self, data_file):
+    def check_dataset(self, data_file):  # 此处整段修改，增添了对非utf-8yanml打开报错的情况
         """Validates the dataset configuration by loading the YAML file specified in `data_file`."""
-        with open(data_file) as f:
-            data_config = yaml.safe_load(f)
+        try:
+            with open(data_file, encoding='utf-8') as f:  # 指定使用UTF-8编码打开文件
+                data_config = yaml.safe_load(f)
+        except UnicodeDecodeError as e:
+            self.logger.error(f"UnicodeDecodeError: Failed to decode file '{data_file}' using UTF-8 encoding.")
+            self.logger.error("Please ensure that the file is encoded properly.")
+            self.logger.error("You may need to check the encoding of the file or use a different encoding.")
+            raise e
+        except Exception as e:
+            self.logger.error(f"Error occurred while reading file '{data_file}': {e}")
+            raise e
 
         path = data_config.get("path")
         if path and path.startswith(COMET_PREFIX):

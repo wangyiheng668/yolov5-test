@@ -124,12 +124,12 @@ if not os.path.isdir(yolov5_labels_test_dir):
         os.mkdir(yolov5_labels_test_dir)
 clear_hidden_files(yolov5_labels_test_dir)
 
-train_file = open(os.path.join(work_sapce_dir, "yolov5_train.txt"), 'w')
-test_file = open(os.path.join(work_sapce_dir, "yolov5_val.txt"), 'w')
+train_file = open(os.path.join(work_sapce_dir, "yolov5_train.txt"), 'w', encoding='utf-8')
+test_file = open(os.path.join(work_sapce_dir, "yolov5_val.txt"), 'w', encoding='utf-8')
 train_file.close()
 test_file.close()
-train_file = open(os.path.join(work_sapce_dir, "yolov5_train.txt"), 'a')
-test_file = open(os.path.join(work_sapce_dir, "yolov5_val.txt"), 'a')
+train_file = open(os.path.join(work_sapce_dir, "yolov5_train.txt"), 'a', encoding='utf-8')
+test_file = open(os.path.join(work_sapce_dir, "yolov5_val.txt"), 'a', encoding='utf-8')
 list_imgs = os.listdir(image_dir) # list image files
 prob = random.randint(1, 100)
 print("Probability: %d" % prob)
