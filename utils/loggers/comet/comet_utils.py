@@ -90,7 +90,7 @@ def set_opt_parameters(opt, experiment):
     os.makedirs(save_dir, exist_ok=True)
 
     hyp_yaml_path = f"{save_dir}/hyp.yaml"
-    with open(hyp_yaml_path, "w") as f:
+    with open(hyp_yaml_path, "w", encoding='utf-8') as f:  # 这里修改打开yaml文件的格式为utf-8
         yaml.dump(opt.hyp, f)
     opt.hyp = hyp_yaml_path
 
@@ -123,6 +123,7 @@ def check_comet_weights(opt):
 
 def check_comet_resume(opt):
     """
+    恢复参数的目的是为了从先前的训练状态重新开始或继续训练。
     Restores run parameters to its original state based on the model checkpoint and logged Experiment parameters.
 
     Args:
@@ -136,13 +137,13 @@ def check_comet_resume(opt):
     if comet_ml is None:
         return
 
-    if isinstance(opt.resume, str) and opt.resume.startswith(COMET_PREFIX):
-        api = comet_ml.API()
-        resource = urlparse(opt.resume)
-        experiment_path = f"{resource.netloc}{resource.path}"
-        experiment = api.get(experiment_path)
-        set_opt_parameters(opt, experiment)
-        download_model_checkpoint(opt, experiment)
+    if isinstance(opt.resume, str) and opt.resume.startswith(COMET_PREFIX):  # 如果opt.resume是一个字符串且以COMET_PREFIX开头
+        api = comet_ml.API()  # 用于与Comet ML平台进行交互
+        resource = urlparse(opt.resume)  # 解析opt.resume字符串中的资源，并获取实验路径experiment_path
+        experiment_path = f"{resource.netloc}{resource.path}"  # 使用格式化字符串将resource.netlocURL中的网络位置部分与resource.path路径部分合并
+        experiment = api.get(experiment_path)  # 使用api获取相应的实验
+        set_opt_parameters(opt, experiment)  # 将参数恢复到最初状态
+        download_model_checkpoint(opt, experiment)  # 下载模型检查点
 
         return True
 

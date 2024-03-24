@@ -284,6 +284,7 @@ def init_seeds(seed=0, deterministic=False):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # for Multi-GPU, exception safe
     # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
+    # 若deterministic的值为真，且 torch的版本最低为1.12.0
     if deterministic and check_version(torch.__version__, "1.12.0"):  # https://github.com/ultralytics/yolov5/pull/8213
         torch.use_deterministic_algorithms(True)
         torch.backends.cudnn.deterministic = True
@@ -536,10 +537,11 @@ def check_dataset(data, autodownload=True):
     assert all(isinstance(k, int) for k in data["names"].keys()), "data.yaml names keys must be integers, i.e. 2: car"
     data["nc"] = len(data["names"])
 
-    # Resolve paths
+    # Resolve paths  解析路径，首先从参数extract_dir 中获取路径，如果没有提供，则尝试从数据集配置中的 "path" 字段获取路径，
+    # 如果仍然没有提供，则将路径设置为当前目录（默认为'.'）,接着并检查他们是不是绝对路径，若不是，则将其视为相对路径，并将其解析成绝对路径
     path = Path(extract_dir or data.get("path") or "")  # optional 'path' default to '.'
     if not path.is_absolute():
-        path = (ROOT / path).resolve()
+        path = (ROOT / path).resolve()  # 解析成绝对路径
         data["path"] = path  # download scripts
     for k in "train", "val", "test":
         if data.get(k):  # prepend path
@@ -551,7 +553,7 @@ def check_dataset(data, autodownload=True):
             else:
                 data[k] = [str((path / x).resolve()) for x in data[k]]
 
-    # Parse yaml
+    # Parse yaml 解析配置文件中"train", "val", "test", "download"字段的值
     train, val, test, s = (data.get(x) for x in ("train", "val", "test", "download"))
     if val:
         val = [Path(x).resolve() for x in (val if isinstance(val, list) else [val])]  # val path
@@ -691,6 +693,7 @@ def download(url, dir=".", unzip=True, delete=True, curl=False, threads=1, retry
             download_one(u, dir)
 
 
+# 作用是将给定的数字 x 调整为可被 divisor 整除的最接近的大于等于 x 的值
 def make_divisible(x, divisor):
     """Adjusts `x` to be divisible by `divisor`, returning the nearest greater or equal value."""
     if isinstance(divisor, torch.Tensor):

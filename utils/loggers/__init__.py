@@ -150,6 +150,7 @@ class Loggers:
         else:
             self.comet_logger = None
 
+# 使用此装饰器可以，只有i当需要获取属性值开会进行计算，以下函数中，只有访问re_da时才调用，且当里面的变量没有更改时直接返回原先的值
     @property
     def remote_dataset(self):
         """Fetches dataset dictionary from remote logging services like ClearML, Weights & Biases, or Comet ML."""

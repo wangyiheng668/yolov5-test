@@ -13,6 +13,30 @@ Models:     https://github.com/ultralytics/yolov5/tree/master/models
 Datasets:   https://github.com/ultralytics/yolov5/tree/master/data
 Tutorial:   https://docs.ultralytics.com/yolov5/tutorials/train_custom_data
 """
+# 如果需要进行可视化训练过程中的指标，可以通过再终端的命令行中输入tensorboard --logdir=logs，即可再默认端口启用其服务器
+# 以下代码中的train_loss、val_loss、accuracy分别是自定义的用于执行训练、验证、和计算准确率的函数
+# from torch.utils.tensorboard import SummaryWriter
+#
+# # 创建一个 SummaryWriter 对象，指定日志存储路径
+# writer = SummaryWriter('logs')
+#
+# # 在 epoch 循环中进行训练
+# for epoch in range(num_epochs):
+#     train_loss = train_one_epoch(model, train_loader, optimizer, criterion)
+#     val_loss = validate(model, val_loader, criterion)
+#     accuracy = calculate_accuracy(model, val_loader)
+#
+#     # 记录训练损失
+#     writer.add_scalar('Train Loss', train_loss, epoch)
+#
+#     # 在验证集上记录验证损失
+#     writer.add_scalar('Validation Loss', val_loss, epoch)
+#
+#     # 记录其他需要的指标，如准确率等
+#     writer.add_scalar('Accuracy', accuracy, epoch)
+#
+# # 关闭 SummaryWriter 对象
+# writer.close()
 
 import argparse
 import math
@@ -191,17 +215,22 @@ def train(hyp, opt, device, callbacks):
     if pretrained:  # 判断是否为预训练模型
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally 如果采用预训练的权重文件，在本地未找到则利用此函数从GitHub上下载
+        # 这里仅仅是加载了权重信息，但是还没有应用到模型上面，应用到模型上应该通过model.load_state_dict来实现。
         ckpt = torch.load(weights, map_location="cpu")  # load checkpoint to CPU to avoid CUDA memory leak  加载模型权重
         #   模型的配置、通道数、预测类别数、预定义锚点的参数
-        # 在这里如果参数parges中的cfg没有定义的话，则从检查点（yolo.py）中的模型定义中提取，这里指的是detectionMoudel类
+        # 在这里如果参数parges中的cfg没有定义的话，则从检查点（yolo.py）中的模型定义中提取，这里指的是detectionMoudel类。
+        # 这里的ch指的是detectionmodel中的rgb三通道
         model = Model(cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
+        # 排除anchors键，其中not resume意味从头开始训练。
         exclude = ["anchor"] if (cfg or hyp.get("anchors")) and not resume else []  # exclude keys
+        # 将模型的权重先转换成浮点型，然后通过state_dict()返回一个字典：包含了模型权重的键和对应的值。
         csd = ckpt["model"].float().state_dict()  # checkpoint state_dict as FP32
+        # intersect_dicts() 函数对加载的权重字典 csd 和模型对象的权重字典 model.state_dict() 进行交集操作。确保相互匹配。
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
-        model.load_state_dict(csd, strict=False)  # load 加载模型参数
+        model.load_state_dict(csd, strict=False)  # load 加载模型权重信息，将模型架构和权重结合。strict=False 表示允许部分键不匹配
         LOGGER.info(f"Transferred {len(csd)}/{len(model.state_dict())} items from {weights}")  # report
     else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create 如果不是与训练模型则直接创建模型，不需要预训练权重文件
+        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create 如果不是预训练模型则直接创建模型，不需要预训练权重文件
     amp = check_amp(model)  # check AMP 检查模型是否需要混合精度训练
     # Freeze
     # 设置冻结模型，使其模型的某些层被冻结，即保留某些层的参数，使这些层的参数在反向传播时不受影响。
@@ -232,16 +261,18 @@ def train(hyp, opt, device, callbacks):
     nbs = 64  # nominal batch size 作为一个预设的batch-size,通常用来作为训练时参考的批次大小
     accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing  决定了在进行一次参数更新前累积了多少个批次的梯度
     hyp["weight_decay"] *= batch_size * accumulate / nbs  # scale weight_decay 对权重衰减进行了调整，减小了模型的参数的大小
-    # # 使用了给定的学习率、动量和权重衰减参数来初始化优化器
+    # 使用了给定的学习率、动量和权重衰减参数来初始化优化器
     optimizer = smart_optimizer(model, opt.optimizer, hyp["lr0"], hyp["momentum"], hyp["weight_decay"])
 
     # Scheduler
+    # 用于不断根据规则更新每个epoch的学习率，并作用在optimizer优化器上
     if opt.cos_lr:  # 如果选择余弦退火学习率
         lf = one_cycle(1, hyp["lrf"], epochs)  # cosine 1->hyp['lrf'] 采用余弦退火更新学习率
     else:
         lf = lambda x: (1 - x / epochs) * (1.0 - hyp["lrf"]) + hyp["lrf"]  # linear
     # lr_lambda得到当前学习率的缩放系数，其用于和初始化学习率相乘，从而得到当前的学习率.
     # scheduler 是一个 LambdaLR 类的实例，如果需要获取当前学习率的值，可以调用 scheduler.get_lr() 方法。
+    # lr_lambda是一个函数或者列表，用于设置每一个epoch的学习率。以下 LambdaLR 调度器会根据一个自定义的 lambda 函数来调整优化器（optimizer）的学习率
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # plot_lr_scheduler(optimizer, scheduler, epochs)
 
     # EMA
@@ -363,10 +394,12 @@ def train(hyp, opt, device, callbacks):
         model.train()  # 将模型设为训练模式
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:  # 若设置了图像的权重参数
+            # 这里首先通过（使用模型的预测的置信度分数与平均精度还有类别数量）计算了类别权重cw
+            # 然后通过类别权重和数据集的标签信息，计算每个图像样本的的权重
             cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights  # 计算类别权重
             iw = labels_to_image_weights(dataset.labels, nc=nc, class_weights=cw)  # image weights 根据类别权重计算图像的权重
-            dataset.indices = random.choices(range(dataset.n), weights=iw, k=dataset.n)  # rand weighted idx  根据图像的权重重新采样数据集的索引
-
+            # 根据图像的权重重新采样数据集的索引
+            dataset.indices = random.choices(range(dataset.n), weights=iw, k=dataset.n)  # rand weighted idx
         # Update mosaic border (optional)
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
@@ -377,6 +410,8 @@ def train(hyp, opt, device, callbacks):
         pbar = enumerate(train_loader)  # 在每一个循环中使用此数据加载器，数据加载器将返回一个带索引和数据的数组，其中索引以批次为单位
         LOGGER.info(("\n" + "%11s" * 7) % ("Epoch", "GPU_mem", "box_loss", "obj_loss", "cls_loss", "Instances", "Size"))
         if RANK in {-1, 0}:  # 表示唯一进程
+            # 这里通过bar_format指定了进度条的类型，并将其总数设置为nb（batch-size）,并通过python内置的tqdm再次封装pbar实现了pbar的更新，即在此epoch中批次的进度。
+            # 但是pbar的实际数据并不会改变
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar  # 用于创建一个进度条用来显示训练进度
         optimizer.zero_grad()  # 每个训练周期开始将优化器的梯度归零
         # 遍历数据加载器中每个批次的数据
@@ -440,7 +475,7 @@ def train(hyp, opt, device, callbacks):
 
             # Log
             if RANK in {-1, 0}:
-                mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
+                mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses 其中i为i个批次
                 mem = f"{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G"  # (GB)
                 pbar.set_description(
                     ("%11s" * 2 + "%11.4g" * 5)
@@ -568,10 +603,10 @@ def parse_opt(known=False):
     parser.add_argument("--data", type=str, default=ROOT / "data/voc_ball.yaml", help="dataset.yaml path")
     parser.add_argument("--hyp", type=str, default=ROOT / "data/hyps/hyp.scratch-low.yaml", help="hyperparameters path")
     parser.add_argument("--epochs", type=int, default=100, help="total training epochs")
-    parser.add_argument("--batch-size", type=int, default=16, help="total batch size for all GPUs, -1 for autobatch")
+    parser.add_argument("--batch-size", type=int, default=8, help="total batch size for all GPUs, -1 for autobatch")
     parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=640, help="train, val image size (pixels)")
     parser.add_argument("--rect", action="store_true", help="rectangular training")
-    parser.add_argument("--resume", nargs="?", const=True, default=False, help="resume most recent training")
+    parser.add_argument("--resume", nargs="?", const=True, default=False, help="resume most recent training")  # 即是否开启在从中断处继续训练
     parser.add_argument("--nosave", action="store_true", help="only save final checkpoint")
     parser.add_argument("--noval", action="store_true", help="only validate final epoch")
     parser.add_argument("--noautoanchor", action="store_true", help="disable AutoAnchor")
@@ -598,6 +633,7 @@ def parse_opt(known=False):
     parser.add_argument("--cos-lr", action="store_true", help="cosine LR scheduler")
     parser.add_argument("--label-smoothing", type=float, default=0.0, help="Label smoothing epsilon")
     parser.add_argument("--patience", type=int, default=100, help="EarlyStopping patience (epochs without improvement)")
+    # nargs="+"": 这表示该参数可以接受多个值
     parser.add_argument("--freeze", nargs="+", type=int, default=[0], help="Freeze layers: backbone=10, first3=0 1 2")
     parser.add_argument("--save-period", type=int, default=-1, help="Save checkpoint every x epochs (disabled if < 1)")
     parser.add_argument("--seed", type=int, default=0, help="Global training seed")
@@ -613,6 +649,7 @@ def parse_opt(known=False):
     parser.add_argument("--ndjson-console", action="store_true", help="Log ndjson to console")
     parser.add_argument("--ndjson-file", action="store_true", help="Log ndjson to file")
 
+    # known 为真，则返回已知参数的命名空间对象；否则，返回所有解析的参数的命名空间对象。
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
 

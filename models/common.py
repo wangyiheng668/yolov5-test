@@ -811,6 +811,7 @@ class AutoShape(nn.Module):
         return self
 
     @smart_inference_mode()
+    # 这是一个对模型的前向推理过程、他既受输入图形，并返回检测结果
     def forward(self, ims, size=640, augment=False, profile=False):
         """
         Performs inference on inputs with optional augment & profiling.

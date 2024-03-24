@@ -151,25 +151,30 @@ class Segment(Detect):
 class BaseModel(nn.Module):
     """YOLOv5 base model."""
 
+    # 这样将具体的计算过程封装到一个_私有方法(_forward_once)
     def forward(self, x, profile=False, visualize=False):
         """Executes a single-scale inference or training pass on the YOLOv5 base model, with options for profiling and
         visualization.
         """
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
+    # 主要实现了前向传播的单次操作
+    # 三个输入分别为输入数据、是否进行性能分析、是否进行特征可视化
     def _forward_once(self, x, profile=False, visualize=False):
         """Performs a forward pass on the YOLOv5 model, enabling profiling and feature visualization options."""
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
+                # 若m.f为整型，则x之来源于一个层，输入为这个层的输出
+                # 若m.f为列表，表示x为多层的输出作为输入数据，当j=-1时代表使用当前层的数据作为输入；当j=其它值时，使用第j层的输出y[j]作为输入，由此构成了一个输入数据列表
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
-            if profile:
+            if profile:  # 调用_profile_one_layer对当前层进行性能分析
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
-            y.append(x if m.i in self.save else None)  # save output
+            y.append(x if m.i in self.save else None)  # save output 保存这一层的输出，并添加到y中
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
-        return x
+        return x # x是当前层的输出，将其返回传入到下一层的输入
 
     def _profile_one_layer(self, m, x, dt):
         """Profiles a single layer's performance by computing GFLOPs, execution time, and parameters."""
@@ -216,7 +221,7 @@ class BaseModel(nn.Module):
 
 class DetectionModel(BaseModel):
     # YOLOv5 detection model
-    def __init__(self, cfg="yolov5s.yaml", ch=3, nc=None, anchors=None):
+    def __init__(self, cfg="yolov5s_ball.yaml", ch=3, nc=None, anchors=None):  # 这个3代表输入图像的通道，这里是3，可代表rgb三通道
         """Initializes YOLOv5 model with configuration file, input channels, number of classes, and custom anchors."""
         super().__init__()
         if isinstance(cfg, dict):
@@ -236,6 +241,7 @@ class DetectionModel(BaseModel):
         if anchors:
             LOGGER.info(f"Overriding model.yaml anchors with anchors={anchors}")
             self.yaml["anchors"] = round(anchors)  # override yaml value
+        # 在这里创建模型，并使用deepcopy(self.yaml)将parse_model中的d设置为self.yaml
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml["nc"])]  # default names
         self.inplace = self.yaml.get("inplace", True)
@@ -385,7 +391,7 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
     if not ch_mul:  # 是否指定了通道数
-        ch_mul = 8
+        ch_mul = 6  # 此处由8改成了6
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)  模型的所有输出量（输出的维度）（锚点数量乘以（类别数量加上5））
 
@@ -393,8 +399,9 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
     # 将当前层次的输出通道数初始化为输入通道列表ch的最后一个值，这样通过不断更新ch，确保了每个模块在构建过程中都以前一个模块的输出通道数作为输入通道数，从而保持通道数的连续性。
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     # 这里是将字典中的backbone列表和head列表进行合并，然后进行迭代遍历。其中i是枚举的索引，而 (f, n, m, args) 是枚举的值，分别表示接收那一层的数据、数量、模块和参数。
-    for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
+    for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args,其中f指的是当前层的输入来源来自于那一层
         m = eval(m) if isinstance(m, str) else m  # eval strings
+        # 例如args=[3, 32, 6, 2, 2]，则其中分别代表输入通道、输出通道、卷积核大小、卷积步长、卷积填充值
         for j, a in enumerate(args):
             with contextlib.suppress(NameError):
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
@@ -420,9 +427,10 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
             DWConvTranspose2d,
             C3x,
         }:
-            c1, c2 = ch[f], args[0]
+            c1, c2 = ch[f], args[0]  # 这里依次将c1设置为ch的最后一个值，即确保通道的输入是上一层的输出
             if c2 != no:  # if not output
-                c2 = make_divisible(c2 * gw, ch_mul)
+                # 即将输出展宽，这里指的是输出通道
+                c2 = make_divisible(c2 * gw, ch_mul)  # 将给定的数字 c2 * gw 调整为可被 ch_mul 整除的最接近的大于等于c2 * gw 的值
 
             args = [c1, c2, *args[1:]]
             if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
@@ -446,10 +454,11 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
         else:
             c2 = ch[f]
 
-        # 根据模块类型 m、参数 args 和重复次数 n 构建模块 m_。
+        # 根据模块类型 m、参数 args 和重复次数 n 构建模块 m_。构建这一个同种类的连接。
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
+        # 去掉m的前缀<class ' 以及后缀 ‘> 并保存到t中
         t = str(m)[8:-2].replace("__main__.", "")  # module type
-        # 计算即模型的参数量。
+        # 计算即模型的参数量。一次迭代为（这一种块所构成的参数量），下次迭代通过sum函数进行相加
         np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f"{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}")  # print
