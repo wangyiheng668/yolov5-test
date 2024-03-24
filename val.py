@@ -232,7 +232,10 @@ def run(
             nb, _, height, width = im.shape  # batch size, channels, height, width
 
         # Inference
+        # 将 dt[1] 打开并进入其上下文管理的代码块
         with dt[1]:
+            # 采用两种不同方式，一种是直接输入图像数据，另一种选择是否进行数据增强
+            # 其中的compute_loss真或者假为是否选择进行损失函数计算的模式，在验证和推理阶段，只需要观测模型的性能，不需要进行损失值的计算
             preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
 
         # Loss
@@ -363,6 +366,8 @@ def run(
     # 共返回了三个元组，第一个元组包含精确度（precision）、召回率（recall）、50% IoU 平均精度（mAP@0.5）、整体平均精度（mAP）以及损失值（loss）的平均值
     # 第二个元组maps 包含了每个类别的平均精度（AP）
     # 第三个元组t用于返回其它信息
+    # len(dataloader) 给出了数据加载器中的批次数量，计算了所有批次的平均损失
+    # 使用了 PyTorch 的 .cpu() 方法将损失值移动到 CPU 上，并将其除以验证数据加载器的长度来计算平均值，最后将结果转换为 Python 列表（list）的形式。
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
 

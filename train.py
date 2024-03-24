@@ -258,6 +258,7 @@ def train(hyp, opt, device, callbacks):
         loggers.on_params_update({"batch_size": batch_size})
 
     # Optimizer
+    # 优化器的初始化，后面要根据模型前向传递得到的result，以及将此result同labels进行对比得到loss函数，然后通过loss.backward可以自动计算梯度。然后使用optimizer.step()更新参数
     nbs = 64  # nominal batch size 作为一个预设的batch-size,通常用来作为训练时参考的批次大小
     accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing  决定了在进行一次参数更新前累积了多少个批次的梯度
     hyp["weight_decay"] *= batch_size * accumulate / nbs  # scale weight_decay 对权重衰减进行了调整，减小了模型的参数的大小
@@ -404,7 +405,7 @@ def train(hyp, opt, device, callbacks):
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(3, device=device)  # mean losses  存储损失值
+        mloss = torch.zeros(3, device=device)  # mean losses  初始化一个大小为3的全零张量用于存储损失值
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)  # 在每一个循环中使用此数据加载器，数据加载器将返回一个带索引和数据的数组，其中索引以批次为单位
@@ -459,6 +460,7 @@ def train(hyp, opt, device, callbacks):
                     loss *= 4.0
 
             # Backward
+            # 不同于常规的loss.backward,这里是将loss乘了一个缩放因子，通常是一个小于1的数。并且这里用到了混合精度训练，即前向传播时用fp16数据类型，梯度计算部分和参数更新部分使用fp32
             scaler.scale(loss).backward()  # 反向传播
 
             # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html

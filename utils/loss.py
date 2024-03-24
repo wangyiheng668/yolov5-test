@@ -145,7 +145,7 @@ class ComputeLoss:
         # pi是对应索引第i个预测的预测值，每个pi含边界框的中心坐标、宽度和高度，以及每个类别的概率分数等信息
         for i, pi in enumerate(p):  # layer index, layer predictions
             # 索引 b 指示了当前预测值 p 属于批次中的哪个图像。
-            b, a, gj, gi = indices[i]  # image索引, anchor索引, gridy, gridx 根据这些索引用于构建目标
+            b, a, gj, gi = indices[i]  # 预测框对应的批次索引 , anchor索引, gridy, gridx 根据这些索引用于构建目标
             tobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
 
             n = b.shape[0]  # number of targets 获取当前预测值中检测到的目标数
@@ -163,7 +163,7 @@ class ComputeLoss:
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 # 计算检测框与目标框的交并比iou
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
-                # 将每个预测框的iou与1取差值再取平均，并累加到总的框回归损失中
+                # 将每个预测框的iou与1取差值再取平均（即求得除去交并比之外的部分），并累加到总的框回归损失中
                 lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
@@ -199,8 +199,11 @@ class ComputeLoss:
         bs = tobj.shape[0]  # batch size
 
         # 返回了总损失值和各部分损失值的张量。总损失值是框回归损失、目标存在性损失和分类损失的加权和，乘以批次大小
+        # .detach() 方法的使用将张量与计算图分离，这样就可以去除与张量相关的计算图和梯度信息。
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
 
+    # 这段代码主要是将输入的目标数据转换成模型损失函数计算所需的格式
+    # p是模型的预测值，targets是原始的标签数据
     def build_targets(self, p, targets):
         """Prepares model targets from input targets (image,class,x,y,w,h) for loss computation, returning class, box,
         indices, and anchors.
