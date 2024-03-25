@@ -407,7 +407,9 @@ def train(hyp, opt, device, callbacks):
 
         mloss = torch.zeros(3, device=device)  # mean losses  初始化一个大小为3的全零张量用于存储损失值
         if RANK != -1:
+            # 在每一个epoch中将读入的数据顺序打乱，增加数据的随机性
             train_loader.sampler.set_epoch(epoch)
+        # 加载训练数据
         pbar = enumerate(train_loader)  # 在每一个循环中使用此数据加载器，数据加载器将返回一个带索引和数据的数组，其中索引以批次为单位
         LOGGER.info(("\n" + "%11s" * 7) % ("Epoch", "GPU_mem", "box_loss", "obj_loss", "cls_loss", "Instances", "Size"))
         if RANK in {-1, 0}:  # 表示唯一进程

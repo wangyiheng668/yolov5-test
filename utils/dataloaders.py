@@ -234,9 +234,13 @@ class InfiniteDataLoader(dataloader.DataLoader):
         """Returns the length of the batch sampler's sampler in the InfiniteDataLoader."""
         return len(self.batch_sampler.sampler)
 
+    # 作用是以循环的方式无限次地产生数据的批次，当所有数据都被消耗完后，重新初始化采样器以重新开始迭代。
     def __iter__(self):
         """Yields batches of data indefinitely in a loop by resetting the sampler when exhausted."""
+        # 通过 len(self) 获取到数据集的长度，然后使用 range 函数进行迭代，迭代次数为数据集的长度。
         for _ in range(len(self)):
+            # 使用 yield 返回数据批次，在每次迭代时会产生一个值，然后暂停，直到下一次迭代。
+            # next(self.iterator)获取下一个数据批次
             yield next(self.iterator)
 
 
@@ -746,6 +750,11 @@ class LoadImagesAndLabels(Dataset):
         if nf == 0:
             LOGGER.warning(f"{prefix}WARNING ⚠️ No labels found in {path}. {HELP_URL}")
         x["hash"] = get_hash(self.label_files + self.im_files)
+        # nf: 表示找到的标签数量。
+        # nm: 表示缺失的图像文件数量。
+        # ne: 表示空白标签数量。
+        # nc: 表示损坏的标签数量。
+        # len(self.im_files): 表示图像文件的总数量。
         x["results"] = nf, nm, ne, nc, len(self.im_files)
         x["msgs"] = msgs  # warnings
         x["version"] = self.cache_version  # cache version
@@ -755,6 +764,7 @@ class LoadImagesAndLabels(Dataset):
             LOGGER.info(f"{prefix}New cache created: {path}")
         except Exception as e:
             LOGGER.warning(f"{prefix}WARNING ⚠️ Cache directory {path.parent} is not writeable: {e}")  # not writeable
+        # 包含了处理过程中收集到的各种信息，包括图像文件、标签、形状、分割信息、数据集的完整性统计、警告消息、缓存版本等
         return x
 
     def __len__(self):

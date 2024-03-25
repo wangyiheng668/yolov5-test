@@ -172,6 +172,7 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output 保存这一层的输出，并添加到y中
+
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
         return x # x是当前层的输出，将其返回传入到下一层的输入
@@ -265,6 +266,7 @@ class DetectionModel(BaseModel):
 
     def forward(self, x, augment=False, profile=False, visualize=False):
         """Performs single-scale or augmented inference and may include profiling or visualization."""
+        # 是否采用数据增强，若采用则将增强后的数据返回给模型进行训练，故此整个过程中不会涉及到loss的传递。
         if augment:
             return self._forward_augment(x)  # augmented inference, None
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
@@ -400,7 +402,7 @@ def parse_model(d, ch):  # 这里的字典d是从yaml配置文件中导入，具
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     # 这里是将字典中的backbone列表和head列表进行合并，然后进行迭代遍历。其中i是枚举的索引，而 (f, n, m, args) 是枚举的值，分别表示接收那一层的数据、数量、模块和参数。
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args,其中f指的是当前层的输入来源来自于那一层
-        m = eval(m) if isinstance(m, str) else m  # eval strings
+        m = eval(m) if isinstance(m, str) else m  # eval strings  eval（）用于执行存储在字符串中的表达式并返回结果
         # 例如args=[3, 32, 6, 2, 2]，则其中分别代表输入通道、输出通道、卷积核大小、卷积步长、卷积填充值
         for j, a in enumerate(args):
             with contextlib.suppress(NameError):
