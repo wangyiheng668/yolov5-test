@@ -398,6 +398,7 @@ class LoadImages:
             assert im0 is not None, f"Image Not Found {path}"
             s = f"image {self.count}/{self.nf} {path}: "
 
+        # 作用使判读是否对输入图像进行转换
         if self.transforms:
             im = self.transforms(im0)  # transforms
         else:

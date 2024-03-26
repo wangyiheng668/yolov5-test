@@ -66,6 +66,7 @@ from utils.torch_utils import select_device, smart_inference_mode
 
 @smart_inference_mode()
 def run(
+    # 这里指的是模型训练后保存的权重
     weights=ROOT / "yolov5s-cls.pt",  # model.pt path(s)
     source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)
     data=ROOT / "data/coco128.yaml",  # dataset.yaml path
@@ -104,7 +105,7 @@ def run(
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
-    bs = 1  # batch_size
+    bs = 1  # batch_size 这里设置为1是逐个图像进行处理
     if webcam:
         view_img = check_imshow(warn=True)
         dataset = LoadStreams(source, img_size=imgsz, transforms=classify_transforms(imgsz[0]), vid_stride=vid_stride)
@@ -112,8 +113,10 @@ def run(
     elif screenshot:
         dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
     else:
+        # classify_transforms（）是数据增强augment.py中的图下那个转换函数，涉及到调整图像的尺寸
+        # vid_stride是当输入为视频时指定的采样步长
         dataset = LoadImages(source, img_size=imgsz, transforms=classify_transforms(imgsz[0]), vid_stride=vid_stride)
-    vid_path, vid_writer = [None] * bs, [None] * bs
+    vid_path, vid_writer = [None] * bs, [None] * bs  # 用于存储每个批次中对应的视频的保存路径和视频写入器对象
 
     # Run inference
     model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup

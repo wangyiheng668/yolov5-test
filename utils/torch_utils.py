@@ -365,7 +365,7 @@ def smart_optimizer(model, name="Adam", lr=0.001, momentum=0.9, decay=1e-5):
             elif p_name == "weight" and isinstance(v, bn):  # weight (no decay) 如果参数名为weight，且是归一化层则将其添加到g1
                 g[1].append(p)
             else:
-                g[0].append(p)  # weight (with decay)
+                g[0].append(p)  # weight (with decay)  g0不是归一化层且不是偏置，是其它层的参数
 
     if name == "Adam":
         optimizer = torch.optim.Adam(g[2], lr=lr, betas=(momentum, 0.999))  # adjust beta1 to momentum

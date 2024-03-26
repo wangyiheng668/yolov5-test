@@ -68,47 +68,50 @@ from utils.torch_utils import select_device, smart_inference_mode
 
 @smart_inference_mode()
 def run(
-    weights=ROOT / "yolov5s.pt",  # model path or triton URL
-    source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)
-    data=ROOT / "data/coco128.yaml",  # dataset.yaml path
+    weights=ROOT / "yolov5s_ball.pt",  # model path or triton URL
+    source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)  输入数据的路径，可以是文件、目录、URL、通配符、屏幕截图或摄像头编号。
+    data=ROOT /" data/voc_ball.yaml",  # dataset.yaml path
     imgsz=(640, 640),  # inference size (height, width)
     conf_thres=0.25,  # confidence threshold
-    iou_thres=0.45,  # NMS IOU threshold
-    max_det=1000,  # maximum detections per image
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-    view_img=False,  # show results
+    iou_thres=0.45,  # NMS IOU threshold   非最大抑制（NMS）的 IoU 阈值，用于合并重叠边界框
+    max_det=1000,  # maximum detections per image 每张图像的最大检测数量
+    device="0",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    view_img=False,  # show results  是否显示推理结果
     save_txt=False,  # save results to *.txt
     save_csv=False,  # save results in CSV format
-    save_conf=False,  # save confidences in --save-txt labels
-    save_crop=False,  # save cropped prediction boxes
+    save_conf=False,  # save confidences in --save-txt labels  是否将置信度保存在.txt的标签中
+    save_crop=False,  # save cropped prediction boxes是否保存裁剪的预测框
     nosave=False,  # do not save images/videos
-    classes=None,  # filter by class: --class 0, or --class 0 2 3
-    agnostic_nms=False,  # class-agnostic NMS
-    augment=False,  # augmented inference
-    visualize=False,  # visualize features
-    update=False,  # update all models
+    classes=None,  # filter by class: --class 0, or --class 0 2 3 定义过滤的类别
+    agnostic_nms=False,  # class-agnostic NMS 是否使用与类别无关的NMS
+    augment=False,  # augmented inference 是否使用增强推理
+    visualize=False,  # visualize features 是否可视化特征
+    update=False,  # update all models 是否更新所有模型
     project=ROOT / "runs/detect",  # save results to project/name
     name="exp",  # save results to project/name
-    exist_ok=False,  # existing project/name ok, do not increment
-    line_thickness=3,  # bounding box thickness (pixels)
-    hide_labels=False,  # hide labels
-    hide_conf=False,  # hide confidences
+    exist_ok=False,  # existing project/name ok, do not increment 是否允许存在的醒目名称
+    line_thickness=3,  # bounding box thickness (pixels)边界框的粗细
+    hide_labels=False,  # hide labels 是否隐藏标签
+    hide_conf=False,  # hide confidences 是否隐藏置信度
     half=False,  # use FP16 half-precision inference
     dnn=False,  # use OpenCV DNN for ONNX inference
-    vid_stride=1,  # video frame-rate stride
+    vid_stride=1,  # video frame-rate stride 视频流中的帧采样间隔
 ):
     source = str(source)
     save_img = not nosave and not source.endswith(".txt")  # save inference images
-    is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
+    is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)  # 判断文件的格式，是否为图片或者视频
     is_url = source.lower().startswith(("rtsp://", "rtmp://", "http://", "https://"))
+    # isnumeric() 是字符串的方法，用于检查字符串是否只包含数字字符
+    # 总结来说这一句是用来判断输入源是否是来自摄像头的实时视频流
     webcam = source.isnumeric() or source.endswith(".streams") or (is_url and not is_file)
-    screenshot = source.lower().startswith("screen")
-    if is_url and is_file:
+    screenshot = source.lower().startswith("screen")  # 判断是否为截图类型的输入源
+    if is_url and is_file:  # 判断是否进行下载
         source = check_file(source)  # download
 
     # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
-    (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+    # increment run  increment_path用于生成一个唯一确定的路径，若原先存在，则在后面加一个序号
+    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)
+    (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir 用于确定是否创建一个标签文件夹
 
     # Load model
     device = select_device(device)
@@ -304,7 +307,7 @@ def parse_opt():
 def main(opt):
     """Executes YOLOv5 model inference with given options, checking requirements before running the model."""
     check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
-    run(**vars(opt))
+    run(**vars(opt))  # 将字典vars（opt）解包作为关键参数进行传递
 
 
 if __name__ == "__main__":

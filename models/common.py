@@ -505,57 +505,57 @@ class DetectMultiBackend(nn.Module):
         # elif xml:  # OpenVINO
         #     LOGGER.info(f"Loading {w} for OpenVINO inference...")
         #     check_requirements("openvino>=2023.0")  # requires openvino-dev: https://pypi.org/project/openvino-dev/
-        #     from openvino.runtime import Core, Layout, get_batch
+            # from openvino.runtime import Core, Layout, get_batch
+            #
+            # core = Core()
+            # if not Path(w).is_file():  # if not *.xml
+            #     w = next(Path(w).glob("*.xml"))  # get *.xml file from *_openvino_model dir
+            # ov_model = core.read_model(model=w, weights=Path(w).with_suffix(".bin"))
+            # if ov_model.get_parameters()[0].get_layout().empty:
+            #     ov_model.get_parameters()[0].set_layout(Layout("NCHW"))
+            # batch_dim = get_batch(ov_model)
+            # if batch_dim.is_static:
+            #     batch_size = batch_dim.get_length()
+            # ov_compiled_model = core.compile_model(ov_model, device_name="AUTO")  # AUTO selects best available device
+            # stride, names = self._load_metadata(Path(w).with_suffix(".yaml"))  # load metadata
+
+        # elif engine:  # TensorRT
+        #     LOGGER.info(f"Loading {w} for TensorRT inference...")
+        #     import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
+
+            # check_version(trt.__version__, "7.0.0", hard=True)  # require tensorrt>=7.0.0
+            # if device.type == "cpu":
+            #     device = torch.device("cuda:0")
+            # Binding = namedtuple("Binding", ("name", "dtype", "shape", "data", "ptr"))
+            # logger = trt.Logger(trt.Logger.INFO)
+            # with open(w, "rb") as f, trt.Runtime(logger) as runtime:
+            #     model = runtime.deserialize_cuda_engine(f.read())
+            # context = model.create_execution_context()
+            # bindings = OrderedDict()
+            # output_names = []
+            # fp16 = False  # default updated below
+            # dynamic = False
+            # for i in range(model.num_bindings):
+            #     name = model.get_binding_name(i)
+            #     dtype = trt.nptype(model.get_binding_dtype(i))
+            #     if model.binding_is_input(i):
+            #         if -1 in tuple(model.get_binding_shape(i)):  # dynamic
+            #             dynamic = True
+            #             context.set_binding_shape(i, tuple(model.get_profile_shape(0, i)[2]))
+            #         if dtype == np.float16:
+            #             fp16 = True
+            #     else:  # output
+            #         output_names.append(name)
+            #     shape = tuple(context.get_binding_shape(i))
+            #     im = torch.from_numpy(np.empty(shape, dtype=dtype)).to(device)
+            #     bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
+            # binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
+            # batch_size = bindings["images"].shape[0]  # if dynamic, this is instead max batch size
+        # elif coreml:  # CoreML
+        #     LOGGER.info(f"Loading {w} for CoreML inference...")
+        #     import coremltools as ct
         #
-        #     core = Core()
-        #     if not Path(w).is_file():  # if not *.xml
-        #         w = next(Path(w).glob("*.xml"))  # get *.xml file from *_openvino_model dir
-        #     ov_model = core.read_model(model=w, weights=Path(w).with_suffix(".bin"))
-        #     if ov_model.get_parameters()[0].get_layout().empty:
-        #         ov_model.get_parameters()[0].set_layout(Layout("NCHW"))
-        #     batch_dim = get_batch(ov_model)
-        #     if batch_dim.is_static:
-        #         batch_size = batch_dim.get_length()
-        #     ov_compiled_model = core.compile_model(ov_model, device_name="AUTO")  # AUTO selects best available device
-        #     stride, names = self._load_metadata(Path(w).with_suffix(".yaml"))  # load metadata
-
-        elif engine:  # TensorRT
-            LOGGER.info(f"Loading {w} for TensorRT inference...")
-            import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
-
-            check_version(trt.__version__, "7.0.0", hard=True)  # require tensorrt>=7.0.0
-            if device.type == "cpu":
-                device = torch.device("cuda:0")
-            Binding = namedtuple("Binding", ("name", "dtype", "shape", "data", "ptr"))
-            logger = trt.Logger(trt.Logger.INFO)
-            with open(w, "rb") as f, trt.Runtime(logger) as runtime:
-                model = runtime.deserialize_cuda_engine(f.read())
-            context = model.create_execution_context()
-            bindings = OrderedDict()
-            output_names = []
-            fp16 = False  # default updated below
-            dynamic = False
-            for i in range(model.num_bindings):
-                name = model.get_binding_name(i)
-                dtype = trt.nptype(model.get_binding_dtype(i))
-                if model.binding_is_input(i):
-                    if -1 in tuple(model.get_binding_shape(i)):  # dynamic
-                        dynamic = True
-                        context.set_binding_shape(i, tuple(model.get_profile_shape(0, i)[2]))
-                    if dtype == np.float16:
-                        fp16 = True
-                else:  # output
-                    output_names.append(name)
-                shape = tuple(context.get_binding_shape(i))
-                im = torch.from_numpy(np.empty(shape, dtype=dtype)).to(device)
-                bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
-            binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
-            batch_size = bindings["images"].shape[0]  # if dynamic, this is instead max batch size
-        elif coreml:  # CoreML
-            LOGGER.info(f"Loading {w} for CoreML inference...")
-            import coremltools as ct
-
-            model = ct.models.MLModel(w)
+        #     model = ct.models.MLModel(w)
         elif saved_model:  # TF SavedModel
             LOGGER.info(f"Loading {w} for TensorFlow SavedModel inference...")
             import tensorflow as tf
