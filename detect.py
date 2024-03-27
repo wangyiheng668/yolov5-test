@@ -116,7 +116,7 @@ def run(
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
-    stride, names, pt = model.stride, model.names, model.pt
+    stride, names, pt = model.stride, model.names, model.pt  # 这里model.names是在DetectMultiBackend中定义的类别名称。
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
@@ -195,6 +195,7 @@ def run(
             annotator = Annotator(im0, line_width=line_thickness, example=str(names))
             if len(det):
                 # Rescale boxes from img_size to im0 size
+                # det[:, :4]是指的det中的前四列，指的是坐标信息对其进行切片操作。并利用scale_boxes（）函数进行
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
 
                 # Print results
@@ -202,7 +203,8 @@ def run(
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # Write results
+                # Write results 画出标注框
+                # det包含坐标（*xyxy）、置信度（conf）和类别（cls）信息，使用reversed（）函数可以确保从最后一个元素逐步向前遍历，这样会确保有限处理置信度最高的检测框。
                 for *xyxy, conf, cls in reversed(det):
                     c = int(cls)  # integer class
                     label = names[c] if hide_conf else f"{names[c]}"
@@ -221,6 +223,7 @@ def run(
                     if save_img or save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if hide_labels else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
+                        # 这一句是将Annotator对象中增加box框
                         annotator.box_label(xyxy, label, color=colors(c, True))
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / "crops" / names[c] / f"{p.stem}.jpg", BGR=True)

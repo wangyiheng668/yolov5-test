@@ -120,12 +120,15 @@ def run(
 
     # Run inference
     model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
+    # dt是不同阶段的性能指标，seen是已经处理过的图像数量
     seen, windows, dt = 0, [], (Profile(device=device), Profile(device=device), Profile(device=device))
     for path, im, im0s, vid_cap, s in dataset:
         with dt[0]:
             im = torch.Tensor(im).to(model.device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
             if len(im.shape) == 3:
+                # 由于模型的期望输入包含批次维度，即(batch_size, channels, height, width)，
+                # 若图像数据没有批次维度，则通过im[None]使其变为 (1, channels, height, width) 的形状。
                 im = im[None]  # expand for batch dim
 
         # Inference
@@ -134,22 +137,26 @@ def run(
 
         # Post-process
         with dt[2]:
-            pred = F.softmax(results, dim=1)  # probabilities
+            pred = F.softmax(results, dim=1)  # probabilities 这里使用softmax函数以获取模型输出的类别概率分布
 
         # Process predictions
         for i, prob in enumerate(pred):  # per image
             seen += 1
             if webcam:  # batch_size >= 1
+                # p当前图像的路径或者标识符，frame当前图像处理的帧数
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
                 s += f"{i}: "
             else:
+                # getattr(dataset, "frame", 0)代表将从dataset中的“frame"中去获取，若没有则将其设为0
                 p, im0, frame = path, im0s.copy(), getattr(dataset, "frame", 0)
 
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # im.jpg
             txt_path = str(save_dir / "labels" / p.stem) + ("" if dataset.mode == "image" else f"_{frame}")  # im.txt
 
+            # "%gx%g " % im.shape[2:]代表将im的第二个字符串后的宽度和高度添加到字符串s中
             s += "%gx%g " % im.shape[2:]  # print string
+            # 初始化图像标注，用于在图像上绘制标注，example是指定的类别名称，这里调用画图库中的Annotator函数
             annotator = Annotator(im0, example=str(names), pil=True)
 
             # Print results
@@ -157,7 +164,7 @@ def run(
             s += f"{', '.join(f'{names[j]} {prob[j]:.2f}' for j in top5i)}, "
 
             # Write results
-            text = "\n".join(f"{prob[j]:.2f} {names[j]}" for j in top5i)
+            text = "\n".join(f"{prob[j]:.2f} {names[j]}" for j in top5i)  # 将概率最大的前五个相应的类别，保存到变量text中
             if save_img or view_img:  # Add bbox to image
                 annotator.text([32, 32], text, txt_color=(255, 255, 255))
             if save_txt:  # Write to file

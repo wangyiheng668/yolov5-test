@@ -639,7 +639,7 @@ class DetectMultiBackend(nn.Module):
             raise NotImplementedError(f"ERROR: {w} is not a supported format")
 
         # class names
-        if "names" not in locals():
+        if "names" not in locals():  # locals()指的是当前局部作用域。在这里指的是self: DetectMultiBackend类的作用域
             names = yaml_load(data)["names"] if data else {i: f"class{i}" for i in range(999)}
         if names[0] == "n01440764" and len(names) == 1000:  # ImageNet
             names = yaml_load(ROOT / "data/ImageNet.yaml")["names"]  # human-readable names
