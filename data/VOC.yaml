@@ -84,14 +84,14 @@ download: |
   # Convert
   path = dir / 'images/VOCdevkit'
   for year, image_set in ('2012', 'train'), ('2012', 'val'), ('2007', 'train'), ('2007', 'val'), ('2007', 'test'):
-      imgs_path = dir / 'images' / f'{image_set}{year}'
+      imgs_path = dir / 'images' / f'{image_set}{year}'  
       lbs_path = dir / 'labels' / f'{image_set}{year}'
       imgs_path.mkdir(exist_ok=True, parents=True)
       lbs_path.mkdir(exist_ok=True, parents=True)
 
-      with open(path / f'VOC{year}/ImageSets/Main/{image_set}.txt') as f:
-          image_ids = f.read().strip().split()
-      for id in tqdm(image_ids, desc=f'{image_set}{year}'):
+      with open(path / f'VOC{year}/ImageSets/Main/{image_set}.txt') as f:  # {image_set}.txt是存储了所有图像的txt文件，这里指的所有图像文件的id文件名 
+          image_ids = f.read().strip().split()  # 得到所有图片的id文件名
+      for id in tqdm(image_ids, desc=f'{image_set}{year}'):  # desc=f'{image_set}{year}' 则用于指定显示在进度条前面的描述信息
           f = path / f'VOC{year}/JPEGImages/{id}.jpg'  # old img path
           lb_path = (lbs_path / f.name).with_suffix('.txt')  # new label path
           f.rename(imgs_path / f.name)  # move image

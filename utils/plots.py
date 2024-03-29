@@ -250,6 +250,7 @@ def plot_val_txt():
 
 def plot_targets_txt():
     """
+    绘制检测目标的直方图，可视化目标的属性分布
     Plots histograms of object detection targets from 'targets.txt', saving the figure as 'targets.jpg'.
 
     Example: from utils.plots import *; plot_targets_txt()
@@ -259,6 +260,7 @@ def plot_targets_txt():
     fig, ax = plt.subplots(2, 2, figsize=(8, 8), tight_layout=True)
     ax = ax.ravel()
     for i in range(4):
+        # bins 参数为 100即将指的范围分成100个区间，
         ax[i].hist(x[i], bins=100, label=f"{x[i].mean():.3g} +/- {x[i].std():.3g}")
         ax[i].legend()
         ax[i].set_title(s[i])
@@ -306,7 +308,7 @@ def plot_val_study(file="", dir="", x=None):
         markersize=8,
         alpha=0.25,
         label="EfficientDet",
-    )
+    )  # 绘制模型的速度与性能之间的关系图
 
     ax2.grid(alpha=0.2)
     ax2.set_yticks(np.arange(20, 60, 5))
@@ -367,17 +369,21 @@ def plot_labels(labels, names=(), save_dir=Path("")):
 
 
 def imshow_cls(im, labels=None, pred=None, names=None, nmax=25, verbose=False, f=Path("images.jpg")):
-    """Displays a grid of images with optional labels and predictions, saving to a file."""
+    """
+    nmax: maximum number of classes ；verbose: 可选参数，是否输出额外的信息
+    Displays a grid of images with optional labels and predictions, saving to a file."""
     from utils.augmentations import denormalize
 
     names = names or [f"class{i}" for i in range(1000)]
+    #  denormalize是将im及逆行反归一化，其中im.clone()代表将im进行克隆，而不是直接在原来的张量上进行修改，并且将拆分后的列表移动到cpu上运行
+    # chunk代表拆分，从第一个维度拆分代表按照批次batch_size进行拆分
     blocks = torch.chunk(
         denormalize(im.clone()).cpu().float(), len(im), dim=0
     )  # select batch index 0, block by channels
-    n = min(len(blocks), nmax)  # number of plots
+    n = min(len(blocks), nmax)  # number of plots 确保绘制的图像数量
     m = min(8, round(n**0.5))  # 8 x 8 default
     fig, ax = plt.subplots(math.ceil(n / m), m)  # 8 rows x n/8 cols
-    ax = ax.ravel() if m > 1 else [ax]
+    ax = ax.ravel() if m > 1 else [ax]  # 将多维数组转成一维数组
     # plt.subplots_adjust(wspace=0.05, hspace=0.05)
     for i in range(n):
         ax[i].imshow(blocks[i].squeeze().permute((1, 2, 0)).numpy().clip(0.0, 1.0))
@@ -437,12 +443,15 @@ def plot_results(file="path/to/results.csv", dir=""):
     fig, ax = plt.subplots(2, 5, figsize=(12, 6), tight_layout=True)
     ax = ax.ravel()
     files = list(save_dir.glob("results*.csv"))
+    # 若在指定文件目录中没有找到任何结果文件则触发断言错误
     assert len(files), f"No results.csv files found in {save_dir.resolve()}, nothing to plot."
     for f in files:
         try:
             data = pd.read_csv(f)
+            # .strip()去除x字符串两端的空格，s包含了x每一列中元素构成的列表
             s = [x.strip() for x in data.columns]
-            x = data.values[:, 0]
+            x = data.values[:, 0]  # x是第一列的索引，也就是epoch数
+            # j为选择哪些列的参数作为绘制图像的目标，i为第几个子图的索引
             for i, j in enumerate([1, 2, 3, 4, 5, 8, 9, 10, 6, 7]):
                 y = data.values[:, j].astype("float")
                 # y[y == 0] = np.nan  # don't show zero values

@@ -21,13 +21,13 @@ class TritonRemoteModel:
         url: Fully qualified address of the Triton server - for e.g. grpc://localhost:8000
         """
 
-        parsed_url = urlparse(url)
+        parsed_url = urlparse(url)  # 从提供的 URL 中解析出来的 Triton 服务器的地址和端口信息
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient, InferInput
 
-            self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
+            self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client 创建了一个grpc客户端对象，用于与triton服务器进行连接
             model_repository = self.client.get_model_repository_index()
-            self.model_name = model_repository.models[0].name
+            self.model_name = model_repository.models[0].name  # 这里是使用GRPC客户端获取模型仓库的索引
             self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
 
             def create_input_placeholders() -> typing.List[InferInput]:
@@ -40,7 +40,7 @@ class TritonRemoteModel:
 
             self.client = InferenceServerClient(parsed_url.netloc)  # Triton HTTP client
             model_repository = self.client.get_model_repository_index()
-            self.model_name = model_repository[0]["name"]
+            self.model_name = model_repository[0]["name"]  # 这里是使用http客户端获取模型仓库的索引
             self.metadata = self.client.get_model_metadata(self.model_name)
 
             def create_input_placeholders() -> typing.List[InferInput]:
@@ -63,11 +63,11 @@ class TritonRemoteModel:
         the model. kwargs are matched with the model input names.
         """
         inputs = self._create_inputs(*args, **kwargs)
-        response = self.client.infer(model_name=self.model_name, inputs=inputs)
+        response = self.client.infer(model_name=self.model_name, inputs=inputs)  # 这里通过指定Triton中推理的模型名称，这个模型存储到服务器中
         result = []
         for output in self.metadata["outputs"]:
             tensor = torch.as_tensor(response.as_numpy(output["name"]))
-            result.append(tensor)
+            result.append(tensor)  # 将推理的结果返回为张量
         return result[0] if len(result) == 1 else result
 
     def _create_inputs(self, *args, **kwargs):

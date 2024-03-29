@@ -628,12 +628,17 @@ class DetectMultiBackend(nn.Module):
             predictor = pdi.create_predictor(config)
             input_handle = predictor.get_input_handle(predictor.get_input_names()[0])
             output_names = predictor.get_output_names()
+        # 1.安装 NVIDIA Triton Inference Server 2.安装 Triton 客户端库
+        # 3.准备模型，模型文件应该是经过训练和转换为支持 Triton 的格式，如TensorFlow SavedModel、ONNX
+        # 4.通过 Triton 提供的工具或 API 来完成部署
         elif triton:  # NVIDIA Triton Inference Server
+            # 当使用 Triton 时，首先需要将模型上传到 Triton 服务器的模型仓库中。在这段代码中，根据 TritonRemoteModel(url=w) 创建了一个 TritonRemoteModel 对象，
+            # w 是 Triton 服务器的 URL。这个对象应该包含了关于要使用的模型的信息，包括模型的名称、版本等。
             LOGGER.info(f"Using {w} as Triton Inference Server...")
             check_requirements("tritonclient[all]")
-            from utils.triton import TritonRemoteModel
+            from utils.triton import TritonRemoteModel  # Triton是一个推理服务器，它提供了一个统一的接口，使用户通过gRPC或则HTTP协议将模型部署到服务器，并通过API推理
 
-            model = TritonRemoteModel(url=w)
+            model = TritonRemoteModel(url=w)  # w 是 Triton 服务器的 URL
             nhwc = model.runtime.startswith("tensorflow")
         else:
             raise NotImplementedError(f"ERROR: {w} is not a supported format")

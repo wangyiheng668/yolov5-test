@@ -543,7 +543,7 @@ def train(hyp, opt, device, callbacks):
                 }
 
                 # Save last, best and delete
-                torch.save(ckpt, last)
+                torch.save(ckpt, last)  # 将当前的权重文件保存到last中
                 if best_fitness == fi:
                     torch.save(ckpt, best)
                 # 当前epoch满足保存周期的条件，则保存模型参数到文件中，文件名包含了当前epoch数。

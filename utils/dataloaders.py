@@ -73,7 +73,9 @@ for orientation in ExifTags.TAGS.keys():
 
 
 def get_hash(paths):
-    """Generates a single SHA256 hash for a list of file or directory paths by combining their sizes and paths."""
+    """
+     按照作用文件所有的路径和大小生成一个唯一的哈希值，这个值用于标注文件是否发生了变化
+    Generates a single SHA256 hash for a list of file or directory paths by combining their sizes and paths."""
     size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))  # sizes
     h = hashlib.sha256(str(size).encode())  # hash sizes
     h.update("".join(paths).encode())  # hash paths
@@ -81,9 +83,13 @@ def get_hash(paths):
 
 
 def exif_size(img):
-    """Returns corrected PIL image size (width, height) considering EXIF orientation."""
+    """
+    每个图像在拍摄时存在方向，这个方向被称为EXIF方向标签，此函数的主要作用是获取修正后的pil图像的尺寸，然后根据方向标签进行高度和宽度的调整
+    1；正常方向、3：180度、6：270度、8：90度
+    Returns corrected PIL image size (width, height) considering EXIF orientation."""
     s = img.size  # (width, height)
     with contextlib.suppress(Exception):
+        # img._getexif() 方法获取图像的 EXIF 元数据，然后将其转换为字典类型，并通过键 orientation 获取图像的方向标签值
         rotation = dict(img._getexif().items())[orientation]
         if rotation in [6, 8]:  # rotation 270 or 90
             s = (s[1], s[0])
@@ -92,6 +98,7 @@ def exif_size(img):
 
 def exif_transpose(image):
     """
+    此函数的主要作用是检查反省是否为设定的反向标签值，不是则进行调整
     Transpose a PIL image accordingly if it has an EXIF Orientation tag.
     Inplace version of https://github.com/python-pillow/Pillow/blob/master/src/PIL/ImageOps.py exif_transpose()
 
@@ -123,18 +130,20 @@ def seed_worker(worker_id):
 
     See https://pytorch.org/docs/stable/notes/randomness.html#dataloader.
     """
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
+    worker_seed = torch.initial_seed() % 2**32  # 获取主进程的种子
+    np.random.seed(worker_seed)  # 设置numpy库的随机种子
+    random.seed(worker_seed)  # 设置python内置库的随机种子
 
 
 # Inherit from DistributedSampler and override iterator
 # https://github.com/pytorch/pytorch/blob/master/torch/utils/data/distributed.py
 class SmartDistributedSampler(distributed.DistributedSampler):
     def __iter__(self):
-        """Yields indices for distributed data sampling, shuffled deterministically based on epoch and seed."""
+        """
+        确保在分布式训练中能够按照每个epoch生成不同随机索引的数据，能后将不同的数据组合为一个批次，同时也能保证不同的epoch的每个批次的数据也不同
+        Yields indices for distributed data sampling, shuffled deterministically based on epoch and seed."""
         g = torch.Generator()
-        g.manual_seed(self.seed + self.epoch)
+        g.manual_seed(self.seed + self.epoch)  # 这样确保了在不同epoch之间的随机数种子是不同的
 
         # determine the the eventual size (n) of self.indices (DDP indices)
         n = int((len(self.dataset) - self.rank - 1) / self.num_replicas) + 1  # num_replicas == WORLD_SIZE
@@ -152,7 +161,7 @@ class SmartDistributedSampler(distributed.DistributedSampler):
             else:
                 idx += (idx * math.ceil(padding_size / len(idx)))[:padding_size]
 
-        return iter(idx)
+        return iter(idx)  # 返回迭代器，迭代生成数据的索引列表
 
 
 def create_dataloader(
@@ -217,6 +226,7 @@ def create_dataloader(
 
 class InfiniteDataLoader(dataloader.DataLoader):
     """
+    创建一个无限次产生次序的批次，并在数据耗尽时进行重置采样器重新开始迭代。常用于持续训练。
     Dataloader that reuses workers.
 
     Uses same syntax as vanilla DataLoader
@@ -246,6 +256,7 @@ class InfiniteDataLoader(dataloader.DataLoader):
 
 class _RepeatSampler:
     """
+    在数据集耗尽时重复的返回样本索引，用于持续不断地产生样本索引
     Sampler that repeats forever.
 
     Args:
@@ -530,10 +541,13 @@ class LoadStreams:
 
 
 def img2label_paths(img_paths):
-    """Generates label file paths from corresponding image file paths by replacing `/images/` with `/labels/` and
+    """
+    用于将图像文件路径转换成对应的标签文件路径，并返回一个标签文件路径的列表
+    Generates label file paths from corresponding image file paths by replacing `/images/` with `/labels/` and
     extension with `.txt`.
     """
     sa, sb = f"{os.sep}images{os.sep}", f"{os.sep}labels{os.sep}"  # /images/, /labels/ substrings
+    # `rsplit()`：从右开始分割，默认保留分割后右边的部分，如若保留左边的部分须在后面加一个[0]
     return [sb.join(x.rsplit(sa, 1)).rsplit(".", 1)[0] + ".txt" for x in img_paths]
 
 
@@ -1036,8 +1050,13 @@ class LoadImagesAndLabels(Dataset):
         return torch.stack(im, 0), torch.cat(label, 0), path, shapes
 
     @staticmethod
-    def collate_fn4(batch):
-        """Bundles a batch's data by quartering the number of shapes and paths, preparing it for model input."""
+    def collate_fn4(batch):  # 这里是将样本组合，得到一个由四个样本构成的组合
+        """
+        用于处理一个批次的数据
+        Bundles a batch's data by quartering the number of shapes and paths, preparing it for model input."""
+        # 这个是对*batch的所有元素进行解压缩，并按照类别返回一个同种类别的迭代器。例如：
+        # batch 包含了四个元素 (im1, label1, path1, shape1), (im2, label2, path2, shape2), (im3, label3, path3, shape3),
+        # 那么 zip(*batch) 将返回一个迭代器，其中第一个元素是 (im1, im2, im3, im4)，第二个元素是 (label1, label2, label3, label4)，以此类推。
         im, label, path, shapes = zip(*batch)  # transposed
         n = len(shapes) // 4
         im4, label4, path4, shapes4 = [], [], path[:n], shapes[:n]
@@ -1048,19 +1067,25 @@ class LoadImagesAndLabels(Dataset):
         for i in range(n):  # zidane torch.zeros(16,3,720,1280)  # BCHW
             i *= 4
             if random.random() < 0.5:
+                # 使用了 PyTorch 的 F.interpolate 函数，采用双线性插值将图像放大两倍并将结果保存在变量im1中。
                 im1 = F.interpolate(im[i].unsqueeze(0).float(), scale_factor=2.0, mode="bilinear", align_corners=False)[
                     0
                 ].type(im[i].type())
+                # 保持相应的标签不变
                 lb = label[i]
             else:
+                # 将第一个图像和第二个图像在水平方向进行拼接，将第三个图像和第四个图像在水平方向进行拼接，然后将这个两个在垂直方向进行拼接，组成2*2
                 im1 = torch.cat((torch.cat((im[i], im[i + 1]), 1), torch.cat((im[i + 2], im[i + 3]), 1)), 2)
+                # 将每一部分的坐标进行了改变。
                 lb = torch.cat((label[i], label[i + 1] + ho, label[i + 2] + wo, label[i + 3] + ho + wo), 0) * s
             im4.append(im1)
             label4.append(lb)
 
         for i, lb in enumerate(label4):
+            # 将每个标签与其对应的图像联系到一起
             lb[:, 0] = i  # add target image index for build_targets()
 
+        # 返回一个包含所有图像拼接的张量，同时标签也按照第一个维度进行拼接
         return torch.stack(im4, 0), torch.cat(label4, 0), path4, shapes4
 
 
