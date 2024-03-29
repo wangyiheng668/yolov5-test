@@ -6,19 +6,30 @@
 # └── datasets
 #     └── VOC  ← downloads here (2.8 GB)
 
-# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
-path: E:/code/pycham/yolo/datasets/VOCdevkit/
+## Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+#path: E:/code/pycham/yolo/datasets/VOCdevkit/
+#train: # train images (relative to 'path')  16551 images
+#     E:/code/pycham/yolo/datasets/VOCdevkit/images/train/
+#val: # val images (relative to 'path')  4952 images
+#     E:/code/pycham/yolo/datasets/VOCdevkit/images/val/
+#test: # test images (optional)
+#  # - images/test2007
+
+
+
+path: ../datasets/VOCdevkit
 train: # train images (relative to 'path')  16551 images
-     E:/code/pycham/yolo/datasets/VOCdevkit/images/train/
+  - images/train/
 val: # val images (relative to 'path')  4952 images
-     E:/code/pycham/yolo/datasets/VOCdevkit/images/val/
+  - /images/val/
 test: # test images (optional)
-  # - images/test2007
+  - images/test/
 
 # Classes
+#names:
+#  0: ball
 names:
-  0: ball
-
+   ball
 
 # Download script/URL (optional) ---------------------------------------------------------------------------------------
 #download: |
