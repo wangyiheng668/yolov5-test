@@ -78,9 +78,9 @@ def convert_annotation(image_id):  # 用于将边界框坐标从Pascal VOC格式
 #     └── yolov5_val.txt         # 验证集图像路径文件
 #  其中VOCdevkit->VOC2007->Annotations/JPEGImages是原有的
 
-# wd = os.getcwd()  # 获取当前工作目录
+wd = os.getcwd()  # 获取当前工作目录
 # base_dir = "E:\code\pycham\yolo\datasets"  # 指定希望创建的目标文件夹路径
-wd = r"E:\code\pycham\yolo\datasets"
+# wd = r"E:\code\pycham\yolo\datasets"
 data_base_dir = os.path.join(wd, "VOCdevkit/")  # VOC数据集的根目录
 if not os.path.isdir(data_base_dir):
     os.mkdir(data_base_dir)  # 不存在则创建

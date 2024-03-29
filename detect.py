@@ -69,7 +69,7 @@ from utils.torch_utils import select_device, smart_inference_mode
 @smart_inference_mode()
 def run(
     weights=ROOT / "yolov5s_ball.pt",  # model path or triton URL
-    source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)  输入数据的路径，可以是文件、目录、URL、通配符、屏幕截图或摄像头编号。
+    source=ROOT / "VOCdevkit/images/test",  # file/dir/URL/glob/screen/0(webcam)  输入数据的路径，可以是文件、目录、URL、通配符、屏幕截图或摄像头编号。
     data=ROOT /" data/voc_ball.yaml",  # dataset.yaml path
     imgsz=(640, 640),  # inference size (height, width)
     conf_thres=0.25,  # confidence threshold
@@ -274,8 +274,9 @@ def parse_opt():
     """Parses command-line arguments for YOLOv5 detection, setting inference options and model configurations."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
-    parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
-    parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
+
+    parser.add_argument("--source", type=str, default=ROOT / "VOCdevkit/images/test", help="file/dir/URL/glob/screen/0(webcam)")
+    parser.add_argument("--data", type=str, default=ROOT / "data/voc_ball.yaml", help="(optional) dataset.yaml path")
     parser.add_argument("--imgsz", "--img", "--img-size", nargs="+", type=int, default=[640], help="inference size h,w")
     parser.add_argument("--conf-thres", type=float, default=0.25, help="confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.45, help="NMS IoU threshold")
